@@ -1,0 +1,20 @@
+[package]
+name = "wa"
+description = "WhatsApp behind Rentlo's Messenger port, and the inbound message feed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time", "sync"] }
+tracing.workspace = true
+whatsapp-rust = { version = "0.7", default-features = false, features = ["tokio-runtime", "tokio-transport", "sqlite-storage", "ureq-client"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }

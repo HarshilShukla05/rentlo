@@ -15,7 +15,10 @@ use domain::{
     PublicCode, UserId,
 };
 use sqlx::postgres::{PgListener, PgPool, PgPoolOptions, PgRow};
-use sqlx::{Postgres, Row, Transaction};
+// Every query built at run time only splices in the fixed column lists
+// below (or a name checked to be a plain identifier). Values always go
+// through bind parameters, never into the text.
+use sqlx::{AssertSqlSafe, Postgres, Row, Transaction};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -60,7 +63,7 @@ impl PgStore {
         if !plain {
             return Err(sqlx::Error::Protocol(format!("not a plain database name: {name:?}")));
         }
-        sqlx::query(&format!("CREATE DATABASE {name}")).execute(&self.pool).await.map(|_| ())
+        sqlx::query(AssertSqlSafe(format!("CREATE DATABASE {name}"))).execute(&self.pool).await.map(|_| ())
     }
 
     pub async fn ping(&self) -> Result<(), sqlx::Error> {
@@ -305,19 +308,22 @@ impl Tx for PgTx {
 
     async fn profile_of(&mut self, user: UserId) -> StoreResult<Option<Profile>> {
         let sql = format!("SELECT {PROFILE_COLUMNS} FROM profiles p WHERE p.user_id = $1");
-        let row = sqlx::query(&sql).bind(user.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
+        let row =
+            sqlx::query(AssertSqlSafe(sql)).bind(user.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
         row.as_ref().map(profile_from).transpose()
     }
 
     async fn profile(&mut self, id: ProfileId) -> StoreResult<Option<Profile>> {
         let sql = format!("SELECT {PROFILE_COLUMNS} FROM profiles p WHERE p.id = $1");
-        let row = sqlx::query(&sql).bind(id.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
+        let row =
+            sqlx::query(AssertSqlSafe(sql)).bind(id.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
         row.as_ref().map(profile_from).transpose()
     }
 
     async fn profile_by_code(&mut self, code: &PublicCode) -> StoreResult<Option<Profile>> {
         let sql = format!("SELECT {PROFILE_COLUMNS} FROM profiles p WHERE p.code = $1");
-        let row = sqlx::query(&sql).bind(code.as_str()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
+        let row =
+            sqlx::query(AssertSqlSafe(sql)).bind(code.as_str()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
         row.as_ref().map(profile_from).transpose()
     }
 
@@ -349,7 +355,7 @@ impl Tx for PgTx {
                  version = p.version + 1, updated_at = EXCLUDED.updated_at \
              RETURNING {PROFILE_COLUMNS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(AssertSqlSafe(sql))
             .bind(Uuid::now_v7())
             .bind(user.as_uuid())
             .bind(code.as_str())
@@ -392,7 +398,7 @@ impl Tx for PgTx {
                    WHERE m.profile_a = LEAST(p.id, $3) AND m.profile_b = GREATEST(p.id, $3)) \
              ORDER BY p.updated_at DESC LIMIT $4"
         );
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(AssertSqlSafe(sql))
             .bind(profile.data.city.as_str())
             .bind(profile.user_id.as_uuid())
             .bind(profile.id.as_uuid())
@@ -411,7 +417,7 @@ impl Tx for PgTx {
                AND p.lat BETWEEN $1 AND $2 AND p.lng BETWEEN $3 AND $4 \
              ORDER BY p.updated_at DESC LIMIT $5"
         );
-        let rows = sqlx::query(&sql)
+        let rows = sqlx::query(AssertSqlSafe(sql))
             .bind(bbox.south)
             .bind(bbox.north)
             .bind(bbox.west)
@@ -453,7 +459,7 @@ impl Tx for PgTx {
              VALUES ($1, $2, $3, $4, $5, $5) ON CONFLICT (profile_a, profile_b) DO NOTHING \
              RETURNING {MATCH_COLUMNS}"
         );
-        let row = sqlx::query(&sql)
+        let row = sqlx::query(AssertSqlSafe(sql))
             .bind(Uuid::now_v7())
             .bind(a.as_uuid())
             .bind(b.as_uuid())
@@ -467,7 +473,8 @@ impl Tx for PgTx {
 
     async fn match_by_id(&mut self, id: MatchId) -> StoreResult<Option<Match>> {
         let sql = format!("SELECT {MATCH_COLUMNS} FROM matches m WHERE m.id = $1 FOR UPDATE");
-        let row = sqlx::query(&sql).bind(id.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
+        let row =
+            sqlx::query(AssertSqlSafe(sql)).bind(id.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
         row.as_ref().map(match_from).transpose()
     }
 
@@ -475,8 +482,12 @@ impl Tx for PgTx {
         let (a, b) = domain::pairing::ordered(x, y);
         let sql =
             format!("SELECT {MATCH_COLUMNS} FROM matches m WHERE m.profile_a = $1 AND m.profile_b = $2 FOR UPDATE");
-        let row =
-            sqlx::query(&sql).bind(a.as_uuid()).bind(b.as_uuid()).fetch_optional(&mut *self.tx).await.map_err(fail)?;
+        let row = sqlx::query(AssertSqlSafe(sql))
+            .bind(a.as_uuid())
+            .bind(b.as_uuid())
+            .fetch_optional(&mut *self.tx)
+            .await
+            .map_err(fail)?;
         row.as_ref().map(match_from).transpose()
     }
 
@@ -513,7 +524,8 @@ impl Tx for PgTx {
                AND m.decision_a IS DISTINCT FROM 'skip' AND m.decision_b IS DISTINCT FROM 'skip' \
              ORDER BY m.score DESC, m.created_at"
         );
-        let rows = sqlx::query(&sql).bind(profile.as_uuid()).fetch_all(&mut *self.tx).await.map_err(fail)?;
+        let rows =
+            sqlx::query(AssertSqlSafe(sql)).bind(profile.as_uuid()).fetch_all(&mut *self.tx).await.map_err(fail)?;
         rows.iter().map(|row| Ok((match_from(row)?, profile_from(row)?))).collect()
     }
 
