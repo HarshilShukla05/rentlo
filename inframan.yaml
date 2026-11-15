@@ -1,0 +1,45 @@
+# Rentlo on Inframan. One image, run as different services.
+version: v1
+application: rentlo
+namespace: rentlo
+appstore:
+  # Owned by this application: its release installs it.
+  rentlo-db:
+    app: postgres
+    version: "18"
+    instance_type: basic-256mb
+    storage_gi: 10
+    backup_hour_utc: 21          # 02:30 in India
+services:
+  bot:
+    # Exactly one, always: two bots on one WhatsApp number would both
+    # answer. A disk keeps the linked WhatsApp session across restarts.
+    type: worker
+    node_pool: application-pool
+    scaling:
+      type: "off"
+      min_replicas: 1
+    storage:
+      size: 1Gi
+      path: /data
+    resources:
+      cpu_request: 50m
+      memory_request: 96Mi
+      cpu_limit: "1"
+      memory_limit: 384Mi
+    termination_grace_seconds: 20
+    build:
+      method: docker
+      dockerfile: ./Dockerfile
+      watch_paths:
+        - crates
+        - Cargo.toml
+        - Cargo.lock
+        - rust-toolchain.toml
+    env:
+      RENTLO_COMMAND: bot
+      PUBLIC_URL: https://rentlo.inframan.live
+      WA_SESSION: /data/whatsapp.db
+      RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
+    connections:
+      DATABASE_URL: postgres/rentlo-db
