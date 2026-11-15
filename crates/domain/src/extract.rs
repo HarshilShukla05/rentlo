@@ -40,6 +40,22 @@ pub fn extract(text: &str, asked: Option<Field>) -> ProfilePatch {
     patch
 }
 
+/// An Indian mobile number in `text`, as digits with the country code.
+///
+/// Used only when WhatsApp did not disclose the sender's number and the
+/// person types it, so that a match can reach them after a mutual yes.
+pub fn phone(text: &str) -> Option<String> {
+    let digits: String = text.chars().filter(char::is_ascii_digit).collect();
+    let local = match digits.len() {
+        10 => digits.as_str(),
+        11 if digits.starts_with('0') => &digits[1..],
+        12 if digits.starts_with("91") => &digits[2..],
+        _ => return None,
+    };
+    // Indian mobile numbers start with 6 to 9.
+    local.starts_with(['6', '7', '8', '9']).then(|| format!("91{local}"))
+}
+
 /// A message as lower-case words. Punctuation is gone, so a phrase can be
 /// matched on word boundaries: "need a flat" never matches "need a flatmate".
 struct Message {
@@ -837,6 +853,16 @@ mod tests {
         assert_eq!(extract("Jhansi", Some(Field::City)).city.unwrap().as_str(), "Jhansi");
         assert_eq!(extract("Jhansi", None).city, None, "an unknown name is a city only when asked");
         assert_eq!(extract("no", Some(Field::City)).gender_pref, None);
+    }
+
+    #[test]
+    fn a_typed_phone_number_gets_its_country_code() {
+        for text in ["9876543210", "+91 98765 43210", "09876543210", "my number is 98765-43210"] {
+            assert_eq!(phone(text).as_deref(), Some("919876543210"), "{text}");
+        }
+        for text in ["12345", "1234567890", "budget 18000", "98765432101234", ""] {
+            assert_eq!(phone(text), None, "{text}");
+        }
     }
 
     #[test]

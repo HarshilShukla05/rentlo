@@ -3,7 +3,7 @@
 //! The state is small and saved after every message, so the bot can restart
 //! at any point and pick the chat up where it was.
 
-use crate::ids::MatchId;
+use crate::ids::{MatchId, PublicCode};
 use crate::profile::{Field, Gender, GenderPref, ProfileData, ProfilePatch};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -41,6 +41,9 @@ pub struct Conversation {
     pub shown: Vec<MatchId>,
     /// Set by "delete"; the next "delete yes" erases the account.
     pub delete_armed: bool,
+    /// A profile the person asked to meet before their own was live. Acted
+    /// on the moment it goes live.
+    pub interest: Option<PublicCode>,
 }
 
 impl Default for Conversation {
@@ -53,6 +56,7 @@ impl Default for Conversation {
             habits_asked: false,
             shown: Vec::new(),
             delete_armed: false,
+            interest: None,
         }
     }
 }
