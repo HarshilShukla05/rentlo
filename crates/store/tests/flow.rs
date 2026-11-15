@@ -36,7 +36,6 @@ impl Messenger for Recorder {
 }
 
 struct World {
-    store: PgStore,
     bot: Bot,
     dispatcher: Dispatcher,
     web: Web,
@@ -68,7 +67,6 @@ impl World {
             bot: Bot::new(shared.clone(), Arc::new(RulesExtractor), settings.clone()),
             dispatcher: Dispatcher::new(shared.clone(), recorder.clone()),
             web: Web::new(shared, settings),
-            store,
             recorder,
             now: Mutex::new(START.parse().unwrap()),
             next_id: Mutex::new(0),
