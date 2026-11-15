@@ -8,8 +8,22 @@ use std::fmt;
 
 /// A city in its canonical spelling.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct City(String);
+
+impl TryFrom<String> for City {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        City::parse(&value).ok_or_else(|| format!("not a city name: {value:?}"))
+    }
+}
+
+impl From<City> for String {
+    fn from(city: City) -> Self {
+        city.0
+    }
+}
 
 struct Known {
     name: &'static str,
@@ -126,6 +140,17 @@ mod tests {
         }
         assert_eq!(City::parse("gurgaon").unwrap().as_str(), "Gurugram");
         assert_eq!(City::parse("Navi  Mumbai").unwrap().as_str(), "Navi Mumbai");
+    }
+
+    #[test]
+    fn a_city_from_json_is_canonical_too() {
+        let city: City = serde_json::from_str(r#""bangalore""#).unwrap();
+        assert_eq!(city.as_str(), "Bengaluru");
+        assert_eq!(serde_json::to_string(&city).unwrap(), r#""Bengaluru""#);
+        assert!(serde_json::from_str::<City>(r#""<script>""#).is_err());
+        for (known, _) in City::known() {
+            assert_eq!(City::parse(known.as_str()), Some(known.clone()), "canonical names parse to themselves");
+        }
     }
 
     #[test]

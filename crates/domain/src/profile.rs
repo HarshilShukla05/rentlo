@@ -19,6 +19,13 @@ string_enum!(
     }
 );
 
+string_enum!(ProfileStatus {
+    /// Shown on the map and matched.
+    Active => "active",
+    /// Hidden at the person's request. Nothing is lost.
+    Paused => "paused",
+});
+
 string_enum!(Gender {
     Male => "male",
     Female => "female",
@@ -224,7 +231,7 @@ impl ProfilePatch {
     pub fn merge(&mut self, other: ProfilePatch) {
         merge(&mut self.intent, other.intent);
         merge(&mut self.city, other.city);
-        merge(&mut self.area, clean_text(other.area, AREA_MAX_CHARS));
+        merge(&mut self.area, clean_text(other.area, AREA_MAX_CHARS).filter(|area| is_place_name(area)));
         merge(&mut self.pin, other.pin);
         merge(&mut self.budget_min, other.budget_min);
         merge(&mut self.budget_max, other.budget_max);
@@ -288,6 +295,15 @@ impl ProfilePatch {
             _ => Err(self.missing()),
         }
     }
+}
+
+/// An area is shown on the public map, so it must be a place name and
+/// nothing else: "Sector 62" passes, a phone number or a link does not.
+fn is_place_name(area: &str) -> bool {
+    const MAX_DIGITS: usize = 3;
+    area.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '.' | ',' | '\''))
+        && area.chars().filter(char::is_ascii_digit).count() <= MAX_DIGITS
+        && area.chars().any(char::is_alphabetic)
 }
 
 fn clean_text(text: Option<String>, max_chars: usize) -> Option<String> {
@@ -410,6 +426,20 @@ mod tests {
         draft.merge(ProfilePatch { note: Some("x".repeat(1000)), area: Some("   ".into()), ..ProfilePatch::default() });
         assert_eq!(draft.note.map(|n| n.chars().count()), Some(NOTE_MAX_CHARS));
         assert_eq!(draft.area, None);
+    }
+
+    #[test]
+    fn an_area_must_be_a_place_name() {
+        let area_after = |text: &str| {
+            let mut draft = ProfilePatch::default();
+            draft.merge(ProfilePatch { area: Some(text.into()), ..ProfilePatch::default() });
+            draft.area
+        };
+        assert_eq!(area_after("Sector 62").as_deref(), Some("Sector 62"));
+        assert_eq!(area_after("HSR Layout, 2nd Stage").as_deref(), Some("HSR Layout, 2nd Stage"));
+        assert_eq!(area_after("call 9876543210"), None);
+        assert_eq!(area_after("see http://x.co/a"), None);
+        assert_eq!(area_after("560034"), None);
     }
 
     #[test]

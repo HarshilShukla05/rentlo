@@ -5,9 +5,26 @@ use serde::{Deserialize, Serialize};
 
 /// A point inside India. The bounds reject typos and swapped coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "RawPoint")]
 pub struct GeoPoint {
     lat: f64,
     lng: f64,
+}
+
+/// The wire form. Reading it goes through [`GeoPoint::new`], so a point from
+/// JSON is held to the same bounds as one built in code.
+#[derive(Deserialize)]
+struct RawPoint {
+    lat: f64,
+    lng: f64,
+}
+
+impl TryFrom<RawPoint> for GeoPoint {
+    type Error = &'static str;
+
+    fn try_from(raw: RawPoint) -> Result<Self, Self::Error> {
+        GeoPoint::new(raw.lat, raw.lng).ok_or("the point is outside India")
+    }
 }
 
 impl GeoPoint {
@@ -79,6 +96,13 @@ mod tests {
         assert!(GeoPoint::new(77.59, 12.97).is_none(), "swapped");
         assert!(GeoPoint::new(51.5, -0.12).is_none());
         assert!(GeoPoint::new(f64::NAN, 77.0).is_none());
+    }
+
+    #[test]
+    fn a_point_from_json_is_held_to_the_same_bounds() {
+        let ok: GeoPoint = serde_json::from_str(r#"{"lat":12.97,"lng":77.59}"#).unwrap();
+        assert_eq!(ok, point(12.97, 77.59));
+        assert!(serde_json::from_str::<GeoPoint>(r#"{"lat":51.5,"lng":-0.12}"#).is_err());
     }
 
     #[test]
