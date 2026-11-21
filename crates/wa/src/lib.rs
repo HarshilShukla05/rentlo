@@ -23,6 +23,9 @@ use whatsapp_rust::transport::TokioWebSocketTransportFactory;
 use whatsapp_rust::types::events::{Event, EventKind};
 use whatsapp_rust::wacore_binary::JidExt;
 
+mod maps;
+pub use maps::resolve_location;
+
 /// Messages older than this when they arrive (queued while the bot was
 /// down) are still answered; older ones are dropped as stale.
 const MAX_AGE_HOURS: i64 = 24;
@@ -233,13 +236,65 @@ fn inbound(ctx: &MessageContext) -> Option<Inbound> {
 }
 
 fn body(message: &whatsapp_rust::waproto::whatsapp::Message) -> Body {
-    if let Some(text) = message.text_content() {
-        return Body::Text(text.to_owned());
-    }
-    if let Some(location) = message.location_message.as_option()
+    let base = message.get_base_message();
+    if let Some(location) = base.live_location_message.as_option()
         && let (Some(lat), Some(lng)) = (location.degrees_latitude, location.degrees_longitude)
     {
+        return Body::LiveLocation { lat, lng };
+    }
+    if let Some(location) = base.location_message.as_option()
+        && let (Some(lat), Some(lng)) = (location.degrees_latitude, location.degrees_longitude)
+    {
+        if location.is_live == Some(true) {
+            return Body::LiveLocation { lat, lng };
+        }
         return Body::Location { lat, lng };
     }
-    Body::Unsupported
+    message.text_content().map_or(Body::Unsupported, |text| Body::Text(text.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use whatsapp_rust::waproto::whatsapp::{Message, message};
+
+    #[test]
+    fn reads_wrapped_current_and_live_location_messages() {
+        let current = Message {
+            location_message: Some(message::LocationMessage {
+                degrees_latitude: Some(17.42),
+                degrees_longitude: Some(78.36),
+                ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+        };
+        assert!(matches!(body(&current), Body::Location { lat: 17.42, lng: 78.36 }));
+        let live_flag = Message {
+            location_message: Some(message::LocationMessage {
+                is_live: Some(true),
+                ..current.location_message.into_option().unwrap_or_default()
+            })
+            .into(),
+            ..Default::default()
+        };
+        assert!(matches!(body(&live_flag), Body::LiveLocation { lat: 17.42, lng: 78.36 }));
+        let ephemeral = Message {
+            ephemeral_message: Some(message::FutureProofMessage {
+                message: Some(Message {
+                    live_location_message: Some(message::LiveLocationMessage {
+                        degrees_latitude: Some(17.42),
+                        degrees_longitude: Some(78.36),
+                        ..Default::default()
+                    })
+                    .into(),
+                    ..Default::default()
+                })
+                .into(),
+            })
+            .into(),
+            ..Default::default()
+        };
+        assert!(matches!(body(&ephemeral), Body::LiveLocation { lat: 17.42, lng: 78.36 }));
+    }
 }

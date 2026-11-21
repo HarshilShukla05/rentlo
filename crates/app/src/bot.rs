@@ -40,6 +40,12 @@ pub enum Body {
         lat: f64,
         lng: f64,
     },
+    LiveLocation {
+        lat: f64,
+        lng: f64,
+    },
+    Area(String),
+    UnresolvedMapLink,
     /// A photo, a voice note, a sticker: nothing the bot reads.
     Unsupported,
 }
@@ -146,7 +152,10 @@ impl Turn<'_> {
         let armed = std::mem::take(&mut self.chat.delete_armed);
         match body {
             Body::Unsupported => self.say(copy::unsupported()),
-            Body::Location { lat, lng } => self.location(lat, lng).await?,
+            Body::Location { lat, lng } => self.location(lat, lng, false).await?,
+            Body::LiveLocation { lat, lng } => self.location(lat, lng, true).await?,
+            Body::Area(area) => self.area(area).await?,
+            Body::UnresolvedMapLink => self.say(copy::map_link_needs_pin()),
             Body::Text(text) => {
                 // While onboarding, "skip" and "yes" answer the bot's question.
                 let onboarding = matches!(self.chat.stage, Stage::New | Stage::Collecting);
@@ -448,11 +457,31 @@ impl Turn<'_> {
         Ok(())
     }
 
-    async fn location(&mut self, lat: f64, lng: f64) -> StoreResult<()> {
+    async fn location(&mut self, lat: f64, lng: f64, live: bool) -> StoreResult<()> {
+        if self.chat.stage == Stage::Paused {
+            self.say(copy::is_paused());
+            return Ok(());
+        }
+        if self.chat.stage == Stage::Live {
+            self.rebase_draft().await?;
+        }
+        if live && self.chat.live_location_seen {
+            return Ok(());
+        }
+        if live {
+            self.chat.live_location_seen = true;
+            if self.chat.draft.pin.is_some() {
+                self.say(copy::live_location_existing());
+                return Ok(());
+            }
+        }
         let Some(pin) = GeoPoint::new(lat, lng) else {
             self.say(copy::pin_outside_india());
             return Ok(());
         };
+        if live {
+            self.say(copy::live_location_saved());
+        }
         let patch = ProfilePatch { pin: Some(pin), ..ProfilePatch::default() };
         match self.chat.stage {
             Stage::New => {
@@ -467,11 +496,42 @@ impl Turn<'_> {
                 self.say(copy::pin_saved_before_live());
                 self.say(self.next_question());
             }
-            Stage::Paused => self.say(copy::is_paused()),
-            Stage::Live => {
-                self.rebase_draft().await?;
-                self.absorb(patch).await?;
+            Stage::Live => self.absorb(patch).await?,
+            Stage::Paused => {}
+        }
+        Ok(())
+    }
+
+    async fn area(&mut self, area: String) -> StoreResult<()> {
+        if self.chat.stage == Stage::Paused {
+            self.say(copy::is_paused());
+            return Ok(());
+        }
+        let mut patch = ProfilePatch::default();
+        patch.merge(ProfilePatch { area: Some(area), ..ProfilePatch::default() });
+        let Some(area) = patch.area.as_deref() else {
+            self.say(copy::map_link_needs_pin());
+            return Ok(());
+        };
+        if self.chat.stage == Stage::Live {
+            self.rebase_draft().await?;
+        }
+        if self.chat.draft.area.as_deref().is_none_or(|old| !old.eq_ignore_ascii_case(area)) {
+            self.chat.draft.pin = None;
+        }
+        self.say(copy::map_area_saved(area, self.chat.draft.pin.is_some()));
+        match self.chat.stage {
+            Stage::New => {
+                self.chat.stage = Stage::Collecting;
+                self.chat.draft.merge(patch);
+                self.say(copy::welcome(self.settings));
             }
+            Stage::Collecting => {
+                self.chat.draft.merge(patch);
+                self.say(self.next_question());
+            }
+            Stage::Live => self.absorb(patch).await?,
+            Stage::Paused => {}
         }
         Ok(())
     }

@@ -37,6 +37,8 @@ pub struct Conversation {
     /// How often each field has been asked.
     pub asks: BTreeMap<Field, u8>,
     pub habits_asked: bool,
+    /// Live location is a one-time snapshot. Use a static pin to change it.
+    pub live_location_seen: bool,
     /// The match cards last shown, in order: "1 yes" means the first.
     pub shown: Vec<MatchId>,
     /// Set by "delete"; the next "delete yes" erases the account.
@@ -54,6 +56,7 @@ impl Default for Conversation {
             asked: None,
             asks: BTreeMap::new(),
             habits_asked: false,
+            live_location_seen: false,
             shown: Vec::new(),
             delete_armed: false,
             interest: None,

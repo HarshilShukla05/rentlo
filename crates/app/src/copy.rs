@@ -117,9 +117,7 @@ pub fn no_more_matches() -> String {
 }
 
 pub fn pin_hint() -> String {
-    "Tip: send me a 📍 location pin of the area you prefer. You then appear on the live map, \
-     and I can match you by distance. Only the area is shown, never the exact spot."
-        .into()
+    "Tip: send me a 📍 location pin of the area you prefer so I can match you by distance.".into()
 }
 
 pub fn pin_saved_before_live() -> String {
@@ -128,6 +126,26 @@ pub fn pin_saved_before_live() -> String {
 
 pub fn pin_outside_india() -> String {
     "That pin is outside India. Send a 📍 pin of the area where you want to live.".into()
+}
+
+pub fn live_location_saved() -> String {
+    "I saved one point from your live location. Send a static 📍 pin if you want to change it.".into()
+}
+
+pub fn live_location_existing() -> String {
+    "You already have a saved 📍 pin. Send a new static pin to change it.".into()
+}
+
+pub fn map_link_needs_pin() -> String {
+    "I couldn't get a location from that Google link. Send a 📍 pin in WhatsApp, or share a dropped pin from Google Maps.".into()
+}
+
+pub fn map_area_saved(area: &str, has_pin: bool) -> String {
+    if has_pin {
+        format!("Saved your preferred area as *{area}*. Your existing 📍 pin still applies.")
+    } else {
+        format!("Saved your preferred area as *{area}*. Send a 📍 pin there to match by distance.")
+    }
 }
 
 /// The first reply to someone whose first message already described them.
@@ -277,7 +295,7 @@ pub fn help() -> String {
      • *matches* to see who fits you\n\
      • *1 yes* or *1 skip* to answer a match\n\
      • a change in plain words, like _budget 20k_ or _I have a cat now_\n\
-     • 📍 a location pin of your preferred area\n\
+     • 📍 a location pin or Google Maps link for your preferred area\n\
      • *profile* to see what I know about you\n\
      • *link* for the live map\n\
      • *pause* / *resume*\n\
