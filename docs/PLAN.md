@@ -338,7 +338,7 @@ JSON over HTTPS. Version prefix `/api/v1`.
 | Feature | Attach point |
 |---|---|
 | Official WhatsApp Cloud API | New `Messenger` adapter |
-| Number masking, in-app relay | `Messenger` plus a `relay` use case |
+| Number masking, in-app relay | The owner's planned central masking service (virtual numbers, two-way relay, usable by any app). Rentlo plugs in as a new `Messenger` adapter plus a `relay` use case |
 | ID check (DigiLocker) | New port `IdentityVerifier`, flag on `users` |
 | Paid verified listing | New `payments` use case, flag on `profiles` |
 | Photos | Object storage port, `profile_media` table |
