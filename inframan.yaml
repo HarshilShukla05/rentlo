@@ -41,9 +41,10 @@ services:
     env:
       RENTLO_COMMAND: bot
       PUBLIC_URL: https://rentlo.inframan.live
-      WA_SESSION: /data/whatsapp.db
+      WA_SESSION: /data/whatsapp-relink.db
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
       RUST_BACKTRACE: "1"
-      WA_PAIRING_NUMBER: "917905878588"
+    secrets:
+      WA_PAIRING_NUMBER: rentlo-wa-pairing-number
     connections:
       DATABASE_URL: postgres/rentlo-db
