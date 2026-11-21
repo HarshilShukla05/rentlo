@@ -19,3 +19,6 @@ chrono.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "env-filter", "std"] }
+axum = "0.8"
+serde.workspace = true
+tower-http = { version = "0.6", features = ["fs", "set-header"] }

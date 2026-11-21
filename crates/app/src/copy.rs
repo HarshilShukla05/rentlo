@@ -20,6 +20,7 @@ pub fn welcome(settings: &Settings) -> String {
          • monthly budget\n\
          • how you live: sleep time, cleanliness, food, smoking, pets\n\n\
          Example: _Need a room in Koramangala Bengaluru, 18k, sleep by 11, veg, non-smoker, very tidy_\n\n\
+         Your map shows an approximate area. Share a neighbourhood name or an area pin.\n\n\
          By continuing you agree to {}",
         settings.privacy_url()
     )
@@ -32,6 +33,7 @@ pub fn welcome_for(code: &PublicCode, settings: &Settings) -> String {
          so they can see you are a fit too.\n\n\
          Tell me in one message: do you *have a room* or *need one*, your city and area, \
          monthly budget, and how you live (sleep time, cleanliness, food, smoking, pets).\n\n\
+         Your map shows an approximate area. Share a neighbourhood name or an area pin.\n\n\
          By continuing you agree to {}",
         settings.privacy_url()
     )
@@ -116,10 +118,6 @@ pub fn no_more_matches() -> String {
     "That is everyone for now. I will message you when someone new fits.".into()
 }
 
-pub fn pin_hint() -> String {
-    "Tip: send me a 📍 location pin of the area you prefer so I can match you by distance.".into()
-}
-
 pub fn pin_saved_before_live() -> String {
     "Got your area. 📍 Now, back to my last question.".into()
 }
@@ -150,7 +148,11 @@ pub fn map_area_saved(area: &str, has_pin: bool) -> String {
 
 /// The first reply to someone whose first message already described them.
 pub fn hello(settings: &Settings) -> String {
-    format!("Hi! I'm Rentlo. I find flatmates who live like you. By continuing you agree to {}", settings.privacy_url())
+    format!(
+        "Hi! I'm Rentlo. I find flatmates who live like you. Your map shows an approximate area. Share a neighbourhood name or an area pin.\n\n\
+         By continuing you agree to {}",
+        settings.privacy_url()
+    )
 }
 
 pub fn phone_saved() -> String {
@@ -189,7 +191,7 @@ fn answer_by_code(code: &PublicCode) -> String {
 /// One profile as seen by `viewer`. No name, no number.
 fn card(viewer: &ProfileData, other: &Profile, score: u8) -> String {
     let Explanation { fits, watch } = matching::explain(viewer, &other.data);
-    let mut lines = vec![format!("{score}% match · {}", other.code), headline(&other.data)];
+    let mut lines = vec![format!("{score}% match · {}", other.code), match_headline(&other.data)];
     lines.extend(person_line(&other.data));
     if !fits.is_empty() {
         lines.push(format!("✅ {}", fits.join(", ")));
@@ -212,7 +214,7 @@ pub fn intro(other_name: Option<&str>, other: &Profile, other_phone: Option<&str
          Stay safe: meet in a public place first, see the flat before you pay anything, \
          and send *report {}* if something feels wrong.",
         other.code,
-        headline(&other.data),
+        match_headline(&other.data),
         other.code
     )
 }
@@ -279,7 +281,9 @@ pub fn reported() -> String {
 }
 
 pub fn link(url: &str) -> String {
-    format!("Your private link to the map and your matches. It works once, for 15 minutes:\n\n{url}")
+    format!(
+        "Open your private map and best matches:\n{url}\n\nThis link works once for 15 minutes. Send *link* for another. You can send a 📍 location pin of your preferred area any time."
+    )
 }
 
 pub fn unsupported() -> String {
@@ -313,12 +317,21 @@ pub fn summary(data: &ProfileData) -> String {
 
 /// "Room available · Koramangala, Bengaluru · ₹16,000/month · from 1 Dec"
 fn headline(data: &ProfileData) -> String {
+    headline_in(data, data.area.as_deref())
+}
+
+fn match_headline(data: &ProfileData) -> String {
+    let name = data.area.as_deref().and_then(|name| domain::area::find(&data.city, name)).map(|area| area.name);
+    headline_in(data, name)
+}
+
+fn headline_in(data: &ProfileData, area: Option<&str>) -> String {
     let intent = match data.intent {
         Intent::HasRoom => "Room available",
         Intent::NeedsRoom => "Looking for a room",
         Intent::TeamUp => "Looking to team up",
     };
-    let place = match &data.area {
+    let place = match area {
         Some(area) => format!("{area}, {}", data.city),
         None => data.city.to_string(),
     };

@@ -7,6 +7,7 @@
 #[macro_use]
 mod macros;
 
+pub mod area;
 pub mod city;
 pub mod command;
 pub mod conversation;

@@ -30,7 +30,9 @@ pub fn extract(text: &str, asked: Option<Field>) -> ProfilePatch {
         ..ProfilePatch::default()
     };
     if let Some((city, at)) = city(&message) {
-        patch.area = area_before(&message, at);
+        patch.area = crate::area::mentioned(&city, &message.words)
+            .map(|area| area.name.to_owned())
+            .or_else(|| area_before(&message, at));
         patch.city = Some(city);
     }
     (patch.budget_min, patch.budget_max) = budget(&message, asked == Some(Field::Budget));
@@ -109,6 +111,11 @@ fn intent(m: &Message) -> Option<Intent> {
     if m.has_any(&[
         "team up",
         "teamup",
+        "need a room and a flatmate",
+        "need a room and a roommate",
+        "looking for a room and a flatmate",
+        "looking for a room and a roommate",
+        "room together",
         "flat together",
         "place together",
         "house together",
@@ -824,11 +831,12 @@ mod tests {
     }
 
     #[test]
-    fn a_city_is_found_anywhere_and_an_area_only_before_it() {
+    fn known_areas_are_canonical_on_either_side_of_the_city() {
         let patch = read("room near hsr layout bangalore for 15k");
         assert_eq!(patch.city, City::parse("blr"));
-        assert_eq!(patch.area.as_deref(), Some("Hsr Layout"));
+        assert_eq!(patch.area.as_deref(), Some("HSR Layout"));
 
+        assert_eq!(read("Hyderabad financial fistrict, 18k").area.as_deref(), Some("Financial District"));
         assert_eq!(read("navi mumbai, 12k").city.unwrap().as_str(), "Navi Mumbai");
         assert_eq!(read("need a room in pune").area, None);
         assert_eq!(read("i work in a bank in mumbai").area, None, "'a bank' is not an area");

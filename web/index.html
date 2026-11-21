@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f4ed">
+  <meta name="referrer" content="no-referrer">
+  <title>Rentlo — Find your flatmate</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Rentlo home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span>rentlo<span class="brand-period">.</span></a>
+    <span class="header-label">The flatmate map</span>
+    <a id="whatsapp" class="button button-dark" hidden>Open WhatsApp <span class="launch-icon" aria-hidden="true"></span></a>
+    <button id="leave" class="button button-outline" hidden>Leave private map</button>
+  </header>
+
+  <main class="layout">
+    <section class="sidebar" aria-labelledby="page-title">
+      <div class="intro">
+        <h1 id="page-title">Find your <br>flatmate<span>.</span></h1>
+        <p id="intro-copy">Explore neighbourhoods to find where you’d like to share a home.</p>
+      </div>
+
+      <section id="profile" class="own-card" aria-label="Your profile" hidden></section>
+
+      <div class="location-controls">
+        <label class="field-label" for="city">City</label>
+        <div class="select-wrap"><span class="place-icon" aria-hidden="true"></span><select id="city"><option>Hyderabad</option></select><span class="select-chevron" aria-hidden="true">⌄</span></div>
+      </div>
+
+      <div class="segment" id="filters" role="group" aria-label="Filter by housing intent">
+        <button data-filter="all" aria-pressed="true">All</button>
+        <button data-filter="has_room" aria-pressed="false"><span class="dot room"></span>Has a room</button>
+        <button data-filter="needs_room" aria-pressed="false"><span class="dot seeker"></span>Needs a room</button>
+        <button data-filter="team_up" aria-pressed="false"><span class="dot team"></span>Team up</button>
+      </div>
+
+      <section id="area-panel" class="area-panel" aria-label="Neighbourhoods">
+        <div class="section-title"><h2>Neighbourhoods</h2><button id="clear-area" class="text-button" hidden>All areas</button></div>
+        <div id="areas" class="areas"><p class="soft-note">Loading areas…</p></div>
+      </section>
+
+      <section id="matches-panel" class="matches-panel" aria-labelledby="matches-title" hidden>
+        <div class="section-title"><h2 id="matches-title">Best matches</h2><span class="private-pill"><span class="lock-icon" aria-hidden="true"></span> Private</span></div>
+        <div id="matches"></div>
+      </section>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <footer class="side-footer"><a href="/privacy">Privacy</a><span id="connection">Map</span></footer>
+    </section>
+
+    <section class="map-frame" aria-label="Neighbourhood map">
+      <div id="map" class="map"></div>
+      <div class="map-title"><span class="map-title-icon" aria-hidden="true">⌖</span><div><strong id="map-label">Hyderabad</strong><span id="map-caption">Neighbourhood view</span></div></div>
+      <div id="map-error" class="map-error" role="status" hidden>The street map is temporarily unavailable. You can still browse the neighbourhood list.</div>
+      <button id="my-area" class="button focus-map" hidden><span class="place-icon" aria-hidden="true"></span>My area</button>
+      <div class="map-controls" aria-label="Map controls">
+        <button data-zoom="1" aria-label="Zoom in">+</button>
+        <button data-zoom="-1" aria-label="Zoom out">−</button>
+        <button id="reset-map" aria-label="Reset city view">⌖</button>
+      </div>
+      <div class="legend" aria-label="Map legend">
+        <span><i class="dot room"></i>Has a room</span><span><i class="dot seeker"></i>Needs a room</span><span><i class="dot team"></i>Team up</span>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

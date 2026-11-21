@@ -2,11 +2,13 @@
 //!
 //! - `rentlo bot`: the WhatsApp session, the conversation, the outbox.
 //!   Exactly one may run: two on one number would both answer.
+//! - `rentlo api`: the Rentlo map and HTTP API.
 //! - `rentlo migrate`: brings the schema up to date and exits.
 //!
 //! The command comes from the first argument or `RENTLO_COMMAND`. The rest
 //! of the configuration is by environment; see [`Env`].
 
+mod http;
 mod retirement;
 
 use app::{Bot, Dispatcher, Inbound, RulesExtractor, Settings, Store};
@@ -44,7 +46,7 @@ impl Env {
                 .unwrap_or_else(|| "https://rentlo.inframan.live".into())
                 .trim_end_matches('/')
                 .into(),
-            bot_phone: var("BOT_PHONE").map(digits),
+            bot_phone: var("BOT_PHONE").or_else(|| var("WA_PAIRING_NUMBER")).map(digits),
             session_path: var("WA_SESSION").unwrap_or_else(|| "/data/whatsapp.db".into()),
             pairing_number: var("WA_PAIRING_NUMBER").map(digits),
         })
@@ -76,6 +78,10 @@ fn main() -> ExitCode {
     let result = runtime.block_on(async {
         match command.as_str() {
             "bot" => bot(Env::read()?).await,
+            "api" => {
+                let env = Env::read()?;
+                http::serve(connect(&env, 8).await?, env.settings(), shutdown_signal()).await
+            }
             "migrate" => connect(&Env::read()?, 2).await.map(|_| ()),
             "retire-whatsapp" => {
                 let active = std::env::var("WA_SESSION").map_err(|_| "set WA_SESSION to the replacement path")?;
@@ -84,7 +90,7 @@ fn main() -> ExitCode {
                 shutdown_signal().await;
                 Ok(())
             }
-            other => Err(format!("unknown command {other:?}; use `rentlo bot` or `rentlo migrate`")),
+            other => Err(format!("unknown command {other:?}; use `rentlo bot`, `rentlo api` or `rentlo migrate`")),
         }
     });
     match result {

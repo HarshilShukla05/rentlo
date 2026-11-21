@@ -40,13 +40,16 @@ pub fn eligible(a: &ProfileData, b: &ProfileData) -> bool {
     a.city == b.city && intents_fit(a.intent, b.intent) && genders_fit(a, b) && budgets_fit(a, b)
 }
 
-/// Someone with a room needs someone without one. Two people without a room
-/// can look together, if at least one of them wants that.
+/// A room offer matches either kind of seeker. Two seekers can look
+/// together if at least one is open to teaming up.
 pub fn intents_fit(a: Intent, b: Intent) -> bool {
     use Intent::{HasRoom, NeedsRoom, TeamUp};
     matches!(
         (a, b),
-        (HasRoom, NeedsRoom) | (NeedsRoom, HasRoom) | (NeedsRoom, TeamUp) | (TeamUp, NeedsRoom) | (TeamUp, TeamUp)
+        (HasRoom, NeedsRoom | TeamUp)
+            | (NeedsRoom | TeamUp, HasRoom)
+            | (NeedsRoom, TeamUp)
+            | (TeamUp, NeedsRoom | TeamUp)
     )
 }
 
@@ -200,7 +203,13 @@ fn distance_fit(a: &ProfileData, b: &ProfileData) -> f64 {
 }
 
 fn distance_km(a: &ProfileData, b: &ProfileData) -> Option<f64> {
-    Some(a.pin?.km_to(b.pin?))
+    let centre = |profile: &ProfileData| {
+        profile.pin.map(crate::geo::area_centre).or_else(|| {
+            let name = profile.area.as_deref()?;
+            Some(crate::area::find(&profile.city, name)?.centre)
+        })
+    };
+    Some(centre(a)?.km_to(centre(b)?))
 }
 
 fn same_area(a: &ProfileData, b: &ProfileData) -> bool {
@@ -337,7 +346,7 @@ fn drinking_line(mine: Drinking, theirs: Drinking) -> Option<Line> {
 fn distance_line(viewer: &ProfileData, other: &ProfileData) -> Option<Line> {
     match distance_km(viewer, other) {
         Some(km) if km <= NEAR_KM => fit("same neighbourhood"),
-        Some(km) if km >= FAR_KM => Some(Line::Watch(format!("about {km:.0} km from your area"))),
+        Some(km) if km >= FAR_KM => Some(Line::Watch("a different part of the city".into())),
         Some(_) => None,
         None if same_area(viewer, other) => fit("same area"),
         None => None,
@@ -387,7 +396,15 @@ mod tests {
             .collect();
         assert_eq!(
             fits,
-            [(HasRoom, NeedsRoom), (NeedsRoom, HasRoom), (NeedsRoom, TeamUp), (TeamUp, NeedsRoom), (TeamUp, TeamUp)]
+            [
+                (HasRoom, NeedsRoom),
+                (HasRoom, TeamUp),
+                (NeedsRoom, HasRoom),
+                (NeedsRoom, TeamUp),
+                (TeamUp, HasRoom),
+                (TeamUp, NeedsRoom),
+                (TeamUp, TeamUp)
+            ]
         );
     }
 
