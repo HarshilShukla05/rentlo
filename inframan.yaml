@@ -41,5 +41,6 @@ services:
       PUBLIC_URL: https://rentlo.inframan.live
       WA_SESSION: /data/whatsapp.db
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
+      RUST_BACKTRACE: "1"
     connections:
       DATABASE_URL: postgres/rentlo-db

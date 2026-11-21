@@ -4,7 +4,7 @@ Read this file first, then `docs/PLAN.md` (the decisions). Together they
 are enough to continue with no chat history. Keep this file current: update
 it in the same commit as the work it describes.
 
-Last update: 2026-11-15. Branch: `claude/gallant-darwin-gxloil`.
+Last update: 2026-11-21. Branch: `claude/gallant-darwin-gxloil`.
 
 ## 1. Product in one paragraph
 
@@ -24,7 +24,7 @@ No app install, no login screen. Details and every decision: `docs/PLAN.md`.
 | 4 `rentlo api` (HTTP + SSE) | Not started | Use cases exist in `crates/app/src/web.rs` |
 | 5 `web/` map PWA | Not started | |
 | 6 `llm` extractor via Inframan agent gateway | Not started | Bot uses `RulesExtractor` (no AI) today |
-| 7 Deploy to Inframan | Blocked on the owner (section 6) | |
+| 7 Deploy to Inframan | Application created; first release running | See section 6 |
 
 **Milestone 1** (first thing the owner tests): send "Hi" to the bot number,
 two people get matched and exchange contacts. Needs only phase 7.
@@ -99,10 +99,10 @@ instead of QR), `RUST_LOG`, `RENTLO_COMMAND`.
 
 ### Owner (human) steps. Nothing deploys until 1 is done.
 
-1. Give Inframan's GitHub App `inframan-git` access to `HarshilShukla05/rentlo`
-   (GitHub: Settings → Applications → inframan-git → Configure → Repository access).
-   Checked 2026-11-15: it reaches `-game` only.
-2. Decide which WhatsApp number the bot uses. It answers **every direct
+1. Done 2026-11-21: `inframan-git` reaches `HarshilShukla05/rentlo`.
+2. Pending: the owner will get a secondary WhatsApp number. Until it is
+   linked, the bot runs but stays unlinked and answers nobody.
+   Decide which WhatsApp number the bot uses. It answers **every direct
    message** to that number. Do not use a personal number. If it is the
    Smash Karts bot number, both bots share one ban risk.
 3. Set `WA_PAIRING_NUMBER` (that number, digits) on the `bot` service in the
@@ -113,16 +113,17 @@ instead of QR), `RUST_LOG`, `RENTLO_COMMAND`.
 
 ### Agent steps
 
-1. **Deploy (phase 7)**, with the Inframan MCP tools, after owner step 1.
-   Read `inframan://instructions` first. Infrastructure `Prod`,
-   id `f498af8b-46c1-4a34-9c5e-c75546d1f819`, region `asia-south1`, one
-   application pool `application-pool`.
-   - Create a pipeline: trigger `push` on branch `claude/gallant-darwin-gxloil`
-     (later `main`), no steps.
-   - `create_application` from `HarshilShukla05/rentlo`, that branch, GitHub
-     app id 2. The release installs PostgreSQL `rentlo-db` from `appstore:`.
-   - Watch `list_deployments`, then `get_logs` for the `bot` service.
-   - First build is a full Rust release build: expect several minutes.
+1. **Deploy (phase 7)**: done on Inframan. Read `inframan://instructions`
+   before any Inframan work.
+   - Infrastructure `Prod` `f498af8b-46c1-4a34-9c5e-c75546d1f819` (asia-south1).
+   - Pipeline `d9d4825c-38d5-43a7-beaa-ec26c0ad0fd1`: push to
+     `claude/gallant-darwin-gxloil` releases. Application `rentlo`
+     `0073d5b4-a8de-49a6-babf-ea48a0ea8271`, GitHub app id 2.
+   - A push releases only if it changes `inframan.yaml` data or a watched
+     path (`crates`, `Cargo.*`, `rust-toolchain.toml`). Docs-only pushes do not.
+   - When a `main` branch exists: create a pipeline for `main` and
+     `update_application` the branch.
+   - Logs: `get_logs` application `rentlo`, service `bot`.
 2. **`rentlo api` (phase 4)**: axum, port 8080, routes in PLAN §10, all backed
    by `app::Web`. SSE `/api/v1/map/stream`: `PgStore::listen(&[PINS_CHANNEL])`,
    payload is a profile code, call `Web::pin(code)`: `Some` -> `pin.upsert`,
@@ -162,6 +163,9 @@ instead of QR), `RUST_LOG`, `RENTLO_COMMAND`.
 - **Docker image never built here** (no Docker daemon in the sandbox). The
   release binary builds and links only libc/libm/libgcc. First real build is
   on Inframan.
+- Number masking is planned as a separate central service (owner's
+  decision, 2026-11-21): virtual numbers with two-way relay, shared by many
+  apps. Rentlo will use it through a new `Messenger` adapter.
 - `wa` has no unit tests. Its logic is thin; it is tested by running it.
 
 ## 8. Commit log so far
