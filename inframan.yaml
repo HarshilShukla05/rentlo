@@ -39,12 +39,10 @@ services:
         - Cargo.lock
         - rust-toolchain.toml
     env:
-      RENTLO_COMMAND: bot
+      RENTLO_COMMAND: retire-whatsapp
       PUBLIC_URL: https://rentlo.inframan.live
-      WA_SESSION: /data/whatsapp-relink.db
+      WA_SESSION: /data/whatsapp-next.db
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
       RUST_BACKTRACE: "1"
-    secrets:
-      WA_PAIRING_NUMBER: rentlo-wa-pairing-number
     connections:
       DATABASE_URL: postgres/rentlo-db
