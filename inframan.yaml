@@ -1,6 +1,8 @@
 # Rentlo on Inframan. One image, run as different services.
 version: v1
+# immutable — managed by Inframan, do not edit
 application: rentlo
+# immutable — managed by Inframan, do not edit
 namespace: rentlo
 appstore:
   # Owned by this application: its release installs it.
@@ -42,5 +44,6 @@ services:
       WA_SESSION: /data/whatsapp.db
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
       RUST_BACKTRACE: "1"
+      WA_PAIRING_NUMBER: "REDACTED"
     connections:
       DATABASE_URL: postgres/rentlo-db
