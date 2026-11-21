@@ -7,6 +7,8 @@
 //! The command comes from the first argument or `RENTLO_COMMAND`. The rest
 //! of the configuration is by environment; see [`Env`].
 
+mod retirement;
+
 use app::{Bot, Dispatcher, Inbound, RulesExtractor, Settings, Store};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -72,10 +74,16 @@ fn main() -> ExitCode {
         }
     };
     let result = runtime.block_on(async {
-        let env = Env::read()?;
         match command.as_str() {
-            "bot" => bot(env).await,
-            "migrate" => connect(&env, 2).await.map(|_| ()),
+            "bot" => bot(Env::read()?).await,
+            "migrate" => connect(&Env::read()?, 2).await.map(|_| ()),
+            "retire-whatsapp" => {
+                let active = std::env::var("WA_SESSION").map_err(|_| "set WA_SESSION to the replacement path")?;
+                retirement::retire_sessions(std::path::Path::new(&active))?;
+                tracing::info!("WhatsApp bot parked until a replacement account is configured");
+                shutdown_signal().await;
+                Ok(())
+            }
             other => Err(format!("unknown command {other:?}; use `rentlo bot` or `rentlo migrate`")),
         }
     });
