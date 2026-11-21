@@ -17,7 +17,7 @@ async-trait.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
 tracing.workspace = true
 uuid.workspace = true
 rand = "0.9"
