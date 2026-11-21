@@ -47,6 +47,19 @@ jobs:
           log="$RUNNER_TEMP/rentlo-rust-tests.log"
           if [[ -f "$log" ]]; then
             printf '### Synthetic conversation test evidence\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
-            grep -E 'shared_locations|reads_wrapped_current|maps::tests|two_people_meet|delete_erases_everything|test result:' "$log" >> "$GITHUB_STEP_SUMMARY" || true
+            grep -E 'shared_locations|verified_map_marks|reads_wrapped_current|maps::tests|two_people_meet|delete_erases_everything|test result:' "$log" >> "$GITHUB_STEP_SUMMARY" || true
             printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
           fi
+  map:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      - run: npm run build
+        working-directory: web

@@ -4,7 +4,8 @@ use crate::model::{Outgoing, Profile, Queued, User};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{
-    City, Conversation, Field, Match, MatchId, ProfileData, ProfileId, ProfilePatch, ProfileStatus, PublicCode, UserId,
+    City, Conversation, Field, Intent, Match, MatchId, ProfileData, ProfileId, ProfilePatch, ProfileStatus, PublicCode,
+    UserId,
 };
 
 /// The database failed. The cause is kept for the log; a use case cannot do
@@ -79,6 +80,8 @@ pub trait Tx: Send {
     async fn candidates(&mut self, profile: &Profile, limit: u32) -> StoreResult<Vec<Profile>>;
     /// Active profiles with a pin, by their blurred position.
     async fn pins(&mut self, bbox: Option<BBox>, limit: u32) -> StoreResult<Vec<Profile>>;
+    /// Counts by saved area and intent for one city. No identity or coordinate is read.
+    async fn area_counts(&mut self, city: &City) -> StoreResult<Vec<(Option<String>, Intent, u32)>>;
     async fn city_counts(&mut self) -> StoreResult<Vec<(City, u32)>>;
 
     // Pairs.
@@ -124,6 +127,7 @@ pub trait Tx: Send {
     /// Uses up a link. `None` when it is unknown, expired or already used.
     async fn take_magic_link(&mut self, token_hash: &[u8], now: DateTime<Utc>) -> StoreResult<Option<UserId>>;
     async fn create_session(&mut self, user: UserId, token_hash: &[u8], expires_at: DateTime<Utc>) -> StoreResult<()>;
+    async fn delete_session(&mut self, token_hash: &[u8]) -> StoreResult<()>;
     async fn session_user(&mut self, token_hash: &[u8], now: DateTime<Utc>) -> StoreResult<Option<UserId>>;
 
     // Safety.

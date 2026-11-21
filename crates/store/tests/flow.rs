@@ -335,9 +335,9 @@ async fn the_map_shows_blurred_pins_and_the_link_signs_in() {
     assert!(!json.contains("12.935") && !json.contains("9198"), "{json}");
 
     let reply = world.say(&ASHA, "link").await;
-    let token = reply.rsplit("/m/").next().unwrap().trim().to_owned();
-    let session = world.web.sign_in(&token, world.now()).await.unwrap();
-    assert!(world.web.sign_in(&token, world.now()).await.is_err(), "a link works once");
+    let token = reply.split("#access=").nth(1).unwrap().split_whitespace().next().unwrap().to_owned();
+    let session = world.web.sign_in(&token, None, world.now()).await.unwrap();
+    assert!(world.web.sign_in(&token, None, world.now()).await.is_err(), "a link works once");
     let me = world.web.me(&session, world.now()).await.unwrap();
     assert_eq!(me.card.unwrap().code.as_str(), asha_code);
     assert!(me.has_pin);
@@ -393,4 +393,67 @@ async fn shared_locations_update_the_area_without_tracking_live_movement() {
     world.deliver(&ASHA, Body::Location { lat: 12.97, lng: 77.59 }).await;
     assert!(world.inbox(&ASHA).await.contains("Updated"));
     assert_eq!(world.web.pins(None, &filter).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn verified_map_marks_the_area_and_only_reveals_safe_matching_signals() {
+    let Some(world) = World::new().await else { return };
+    let city = domain::City::parse("Hyderabad").unwrap();
+    assert!(matches!(world.web.area_activity("anonymous", &city, world.now()).await, Err(app::Error::Unauthorized)));
+
+    for person in [&ASHA, &MEERA, &Person { phone: "919800000004", name: "Riya" }] {
+        let reply = world
+            .say(
+                person,
+                "I have a room in Hyderabad Financial District, 16k, female, any gender, sleep early, tidy, veg",
+            )
+            .await;
+        assert!(reply.contains("You are live"), "{reply}");
+    }
+    let reply = world
+        .say(
+            &RAVI,
+            "Need a room and a flatmate in Hyderabad financial fistrict, 20k, male, any gender, sleep early, tidy, veg",
+        )
+        .await;
+    assert!(reply.contains("Open your private map and best matches"), "{reply}");
+    let token = reply.split("#access=").nth(1).unwrap().split_whitespace().next().unwrap();
+    let session = world.web.sign_in(token, None, world.now()).await.unwrap();
+    assert!(matches!(world.web.sign_in(token, None, world.now()).await, Err(app::Error::Unauthorized)));
+
+    let me = world.web.me(&session, world.now()).await.unwrap();
+    let card = me.card.unwrap();
+    assert_eq!(card.area.as_deref(), Some("Financial District"));
+    assert_eq!(card.intent, domain::Intent::TeamUp);
+    let location = me.location.unwrap();
+    assert_eq!(location.precision, "neighbourhood");
+    assert_eq!(location.point, domain::area::find(&city, "Financial District").unwrap().centre);
+    assert!(!me.has_pin, "a recognised neighbourhood needs no shared pin");
+
+    let activity = serde_json::to_value(world.web.area_activity(&session, &city, world.now()).await.unwrap()).unwrap();
+    assert_eq!(activity, serde_json::json!([{"area":"Financial District","intent":"has_room","at_least":3}]));
+    let matches = world.web.matches(&session, world.now()).await.unwrap();
+    assert_eq!(matches.len(), 3);
+    assert!(matches.iter().all(|m| !m.fits.is_empty() && m.fits.len() <= 3 && m.whatsapp.is_none()));
+    let json = serde_json::to_value(&matches).unwrap();
+    let offer = json[0]["card"].as_object().unwrap();
+    for field in ["lat", "lng", "note", "gender", "code", "lifestyle"] {
+        assert!(!offer.contains_key(field), "match card exposed {field}");
+    }
+
+    let point = domain::GeoPoint::new(17.412_31, 78.345_22).unwrap();
+    world.deliver(&RAVI, Body::Location { lat: point.lat(), lng: point.lng() }).await;
+    let location = world.web.me(&session, world.now()).await.unwrap().location.unwrap();
+    assert_eq!(location.precision, "approximate");
+    assert_eq!(location.point, domain::geo::area_centre(point));
+    assert_ne!(location.point, point);
+
+    world.web.set_paused(&session, true, world.now()).await.unwrap();
+    assert!(world.web.me(&session, world.now()).await.unwrap().paused);
+    assert!(world.web.matches(&session, world.now()).await.unwrap().is_empty());
+    assert!(world.say(&RAVI, "Hi").await.contains("paused"));
+    world.web.set_paused(&session, false, world.now()).await.unwrap();
+    assert_eq!(world.web.matches(&session, world.now()).await.unwrap().len(), 3);
+    world.web.sign_out(&session).await.unwrap();
+    assert!(matches!(world.web.me(&session, world.now()).await, Err(app::Error::Unauthorized)));
 }

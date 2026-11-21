@@ -11,8 +11,8 @@ use app::ports::{BBox, StoreError, StoreResult, Tx};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{
-    Budget, City, Conversation, Decision, GeoPoint, Lifestyle, Match, MatchId, ProfileData, ProfileId, ProfileStatus,
-    PublicCode, UserId,
+    Budget, City, Conversation, Decision, GeoPoint, Intent, Lifestyle, Match, MatchId, ProfileData, ProfileId,
+    ProfileStatus, PublicCode, UserId,
 };
 use sqlx::postgres::{PgListener, PgPool, PgPoolOptions, PgRow};
 // Every query built at run time only splices in the fixed column lists
@@ -429,6 +429,17 @@ impl Tx for PgTx {
         rows.iter().map(profile_from).collect()
     }
 
+    async fn area_counts(&mut self, city: &City) -> StoreResult<Vec<(Option<String>, Intent, u32)>> {
+        let rows: Vec<(Option<String>, String, i64)> = sqlx::query_as(
+            "SELECT area, intent, count(*) FROM profiles WHERE city = $1 AND status = 'active' GROUP BY area, intent",
+        )
+        .bind(city.as_str())
+        .fetch_all(&mut *self.tx)
+        .await
+        .map_err(fail)?;
+        rows.into_iter().map(|(area, intent, n)| Ok((area, intent.parse().map_err(corrupt)?, count(n)))).collect()
+    }
+
     async fn city_counts(&mut self) -> StoreResult<Vec<(City, u32)>> {
         let rows = sqlx::query(
             "SELECT city, count(*) AS n FROM profiles WHERE status = 'active' GROUP BY city ORDER BY n DESC, city",
@@ -639,6 +650,15 @@ impl Tx for PgTx {
             .bind(token_hash)
             .bind(user.as_uuid())
             .bind(expires_at)
+            .execute(&mut *self.tx)
+            .await
+            .map_err(fail)?;
+        Ok(())
+    }
+
+    async fn delete_session(&mut self, token_hash: &[u8]) -> StoreResult<()> {
+        sqlx::query("DELETE FROM web_sessions WHERE token_hash = $1")
+            .bind(token_hash)
             .execute(&mut *self.tx)
             .await
             .map_err(fail)?;

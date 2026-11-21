@@ -263,8 +263,8 @@ impl Turn<'_> {
         }
         // After an edit, silence beats "no matches yet" on every change.
         self.matches(!published.fresh).await?;
-        if published.fresh && profile.data.pin.is_none() {
-            self.say(copy::pin_hint());
+        if published.fresh {
+            self.link().await?;
         }
         Ok(())
     }
@@ -450,10 +450,15 @@ impl Turn<'_> {
     }
 
     async fn link(&mut self) -> StoreResult<()> {
+        if self.tx.profile_of(self.user.id).await?.is_none() {
+            self.say(copy::finish_first());
+            self.say(self.next_question());
+            return Ok(());
+        }
         let token = ops::new_token();
         let expires = self.now + policy::magic_link_ttl();
         self.tx.create_magic_link(self.user.id, &ops::hash_token(&token), expires).await?;
-        self.say(copy::link(&format!("{}/m/{token}", self.settings.public_url)));
+        self.say(copy::link(&format!("{}/#access={token}", self.settings.public_url)));
         Ok(())
     }
 

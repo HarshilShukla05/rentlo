@@ -1,5 +1,7 @@
 # Rentlo: build plan
 
+The implemented WhatsApp access, location privacy and map behaviour are described in [the map flow](map-flow.md).
+
 Status: decided. Every section below is a decision, not an option list.
 An agent can build one section without reading the chat that produced it.
 

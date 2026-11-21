@@ -31,6 +31,10 @@ impl GeoPoint {
     const LAT: std::ops::RangeInclusive<f64> = 6.0..=37.5;
     const LNG: std::ops::RangeInclusive<f64> = 68.0..=97.5;
 
+    pub(crate) const fn catalogue_point(lat: f64, lng: f64) -> Self {
+        Self { lat, lng }
+    }
+
     pub fn new(lat: f64, lng: f64) -> Option<Self> {
         (Self::LAT.contains(&lat) && Self::LNG.contains(&lng)).then_some(Self { lat, lng })
     }
@@ -56,6 +60,12 @@ impl GeoPoint {
 
 /// Side of a blur cell in degrees: about 1.1 km north-south.
 pub const BLUR_CELL_DEG: f64 = 0.01;
+
+/// A neighbourhood-sized cell centre for display and distance scoring.
+pub fn area_centre(point: GeoPoint) -> GeoPoint {
+    let snap = |value: f64| ((value / BLUR_CELL_DEG).floor() + 0.5) * BLUR_CELL_DEG;
+    GeoPoint { lat: snap(point.lat), lng: snap(point.lng) }
+}
 
 /// The only form of a profile's location that may leave the server.
 ///

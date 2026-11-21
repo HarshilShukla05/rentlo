@@ -1,8 +1,6 @@
 //! What the web app may read and do.
 //!
-//! Public reads expose only what a match card shows: no name, no number, and
-//! a location blurred to its grid cell. Everything else needs a session,
-//! which only the person's own private link can start.
+//! Member activity and matches require a session from a private WhatsApp link.
 
 use crate::Error;
 use crate::model::{Profile, Settings, User};
@@ -12,13 +10,15 @@ use crate::ports::{BBox, Store};
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::conversation::Stage;
 use domain::{
-    Gender, GenderPref, Intent, Lifestyle, MatchId, MatchStatus, ProfilePatch, ProfileStatus, PublicCode, geo,
+    City, Gender, GenderPref, GeoPoint, Intent, Lifestyle, MatchId, MatchStatus, ProfilePatch, ProfileStatus,
+    PublicCode, area, geo,
 };
 use serde::Serialize;
 use std::sync::Arc;
 
 /// Pins returned for one map view at most.
 pub const MAX_PINS: u32 = 500;
+const MAX_WEB_MATCHES: usize = 30;
 
 pub struct Web {
     store: Arc<dyn Store>,
@@ -92,19 +92,59 @@ pub struct CityCount {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Me {
+    /// The approximate point the owner sees on their private map.
+    pub location: Option<MapLocation>,
     pub card: Option<Card>,
     pub paused: bool,
     pub has_pin: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct MapLocation {
+    pub point: GeoPoint,
+    pub precision: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AreaActivity {
+    /// A catalogue neighbourhood, or the city for activity outside those neighbourhoods.
+    pub area: Option<&'static str>,
+    pub intent: Intent,
+    /// Lower bound of a bucket. Exact counts and groups under three stay private.
+    pub at_least: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MatchCard {
+    pub intent: Intent,
+    pub city: String,
+    pub area: Option<&'static str>,
+    pub budget_min: u32,
+    pub budget_max: u32,
+    pub move_in: Option<NaiveDate>,
+}
+
+impl From<&Profile> for MatchCard {
+    fn from(profile: &Profile) -> Self {
+        let data = &profile.data;
+        Self {
+            intent: data.intent,
+            city: data.city.to_string(),
+            area: data.area.as_deref().and_then(|name| area::find(&data.city, name)).map(|area| area.name),
+            budget_min: data.budget.min(),
+            budget_max: data.budget.max(),
+            move_in: data.move_in,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct WebMatch {
     pub id: MatchId,
-    pub score: u8,
     pub status: MatchStatus,
     /// The viewer's own answer, if given.
     pub decided: bool,
-    pub card: Card,
+    pub card: MatchCard,
     pub fits: Vec<String>,
     pub watch: Vec<String>,
     /// After a mutual yes only.
@@ -167,13 +207,51 @@ impl Web {
     }
 
     /// Trades a private link for a session. The link works once.
-    pub async fn sign_in(&self, link_token: &str, now: DateTime<Utc>) -> Result<String, Error> {
+    pub async fn sign_in(&self, link_token: &str, previous: Option<&str>, now: DateTime<Utc>) -> Result<String, Error> {
         let mut tx = self.store.begin().await?;
         let user = tx.take_magic_link(&ops::hash_token(link_token), now).await?.ok_or(Error::Unauthorized)?;
         let session = ops::new_token();
         tx.create_session(user, &ops::hash_token(&session), now + policy::session_ttl()).await?;
+        if let Some(previous) = previous {
+            tx.delete_session(&ops::hash_token(previous)).await?;
+        }
         tx.commit().await?;
         Ok(session)
+    }
+
+    pub async fn sign_out(&self, session: &str) -> Result<(), Error> {
+        let mut tx = self.store.begin().await?;
+        tx.delete_session(&ops::hash_token(session)).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn area_activity(
+        &self,
+        session: &str,
+        city: &City,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<AreaActivity>, Error> {
+        let mut tx = self.store.begin().await?;
+        let user = self.user(tx.as_mut(), session, now).await?;
+        if tx.profile_of(user.id).await?.is_none() {
+            return Err(Error::Unauthorized);
+        }
+        let counts = tx.area_counts(city).await?;
+        tx.commit().await?;
+        let mut grouped = std::collections::BTreeMap::new();
+        for (name, intent, count) in counts {
+            let name = name.as_deref().and_then(|name| area::find(city, name)).map(|area| area.name);
+            let total = grouped.entry((name, intent)).or_insert(0_u32);
+            *total = total.saturating_add(count);
+        }
+        Ok(grouped
+            .into_iter()
+            .filter_map(|((area, intent), count)| {
+                let at_least = [25, 10, 5, 3].into_iter().find(|bound| count >= *bound)?;
+                Some(AreaActivity { area, intent, at_least })
+            })
+            .collect())
     }
 
     async fn user(&self, tx: &mut dyn crate::Tx, session: &str, now: DateTime<Utc>) -> Result<User, Error> {
@@ -187,6 +265,7 @@ impl Web {
         let profile = tx.profile_of(user.id).await?;
         tx.commit().await?;
         Ok(Me {
+            location: profile.as_ref().and_then(map_location),
             paused: profile.as_ref().is_some_and(|p| p.status == ProfileStatus::Paused),
             has_pin: profile.as_ref().is_some_and(|p| p.data.pin.is_some()),
             card: profile.as_ref().map(Card::from),
@@ -197,8 +276,17 @@ impl Web {
         let mut tx = self.store.begin().await?;
         let user = self.user(tx.as_mut(), session, now).await?;
         let Some(own) = tx.profile_of(user.id).await? else { return Ok(Vec::new()) };
+        if own.status != ProfileStatus::Active {
+            return Ok(Vec::new());
+        }
         let mut list = Vec::new();
         for (pair, other) in tx.matches_of(own.id).await? {
+            if list.len() == MAX_WEB_MATCHES {
+                break;
+            }
+            if pair.status() == MatchStatus::Suggested && !domain::matching::eligible(&own.data, &other.data) {
+                continue;
+            }
             let status = pair.status();
             let (name, whatsapp) = if status == MatchStatus::Mutual {
                 let other_user = tx.user(other.user_id).await?;
@@ -211,10 +299,9 @@ impl Web {
             let explanation = domain::matching::explain(&own.data, &other.data);
             list.push(WebMatch {
                 id: pair.id,
-                score: pair.score,
                 status,
                 decided: pair.decision_of(own.id).is_some(),
-                card: Card::from(&other),
+                card: MatchCard::from(&other),
                 fits: explanation.fits,
                 watch: explanation.watch,
                 name,
@@ -250,6 +337,28 @@ impl Web {
         Ok(result)
     }
 
+    /// Changes participation without changing the profile or its WhatsApp identity.
+    pub async fn set_paused(&self, session: &str, paused: bool, now: DateTime<Utc>) -> Result<(), Error> {
+        let mut tx = self.store.begin().await?;
+        let user = self.user(tx.as_mut(), session, now).await?;
+        let mut chat = tx.conversation(user.id, true).await?;
+        let profile = tx.profile_of(user.id).await?.ok_or(Error::NotFound)?;
+        match (paused, profile.status) {
+            (true, ProfileStatus::Active) => {
+                tx.set_profile_status(user.id, ProfileStatus::Paused, now).await?;
+                chat.stage = Stage::Paused;
+            }
+            (false, ProfileStatus::Paused) => {
+                ops::publish(tx.as_mut(), &user, &profile.data, now).await?;
+                chat.stage = Stage::Live;
+            }
+            _ => return Ok(()),
+        }
+        tx.save_conversation(user.id, &chat, now).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Edits the person's profile. Only fields present in `patch` change.
     pub async fn update(&self, session: &str, patch: ProfilePatch, now: DateTime<Utc>) -> Result<Card, Error> {
         let mut tx = self.store.begin().await?;
@@ -273,6 +382,18 @@ impl Web {
         tx.commit().await?;
         Ok(Card::from(&published.profile))
     }
+}
+
+fn map_location(profile: &Profile) -> Option<MapLocation> {
+    let data = &profile.data;
+    let (point, precision) = if let Some(pin) = data.pin {
+        (geo::area_centre(pin), "approximate")
+    } else if let Some(area) = data.area.as_deref().and_then(|name| area::find(&data.city, name)) {
+        (area.centre, "neighbourhood")
+    } else {
+        (data.city.centre()?, "city")
+    };
+    Some(MapLocation { point, precision })
 }
 
 fn pin(profile: &Profile) -> Option<Pin> {
