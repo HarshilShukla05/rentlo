@@ -20,6 +20,7 @@ use whatsapp_rust::http::UreqHttpClient;
 use whatsapp_rust::pair_code::PairCodeOptions;
 use whatsapp_rust::prelude::*;
 use whatsapp_rust::transport::TokioWebSocketTransportFactory;
+use whatsapp_rust::types::events::{Event, EventKind};
 use whatsapp_rust::wacore_binary::JidExt;
 
 /// Messages older than this when they arrive (queued while the bot was
@@ -144,10 +145,46 @@ async fn connect(config: &Config, link: Link, inbox: mpsc::Sender<Inbound>) -> R
                 timeout.as_secs()
             );
         })
+        .on_pair_code_error(|error, _| async move {
+            tracing::warn!(
+                rejection = ?error.rejection,
+                retry_after_seconds = ?error.backoff.map(|delay| delay.as_secs()),
+                "WhatsApp pairing code request failed"
+            );
+        })
+        .on_event_for(&[EventKind::PairSuccess, EventKind::PairError, EventKind::StreamReplaced], |event, _| async move {
+            match event.as_ref() {
+                Event::PairSuccess(_) => tracing::info!("WhatsApp pairing confirmed"),
+                Event::PairError(_) => tracing::warn!("WhatsApp pairing confirmation failed"),
+                Event::StreamReplaced(_) => tracing::warn!("WhatsApp stream replaced by another session"),
+                _ => {}
+            }
+        })
         .on_connected(|_| async { tracing::info!("WhatsApp connected") })
-        .on_logged_out(move |_| {
+        .on_logged_out(move |event| {
             link.set(None);
-            async { tracing::error!("WhatsApp logged this device out; it must be linked again") }
+            async move {
+                // Logout stanzas can carry account-specific details. Log only the protocol status.
+                let stream_code = event
+                    .raw
+                    .as_ref()
+                    .filter(|node| node.tag == "stream:error")
+                    .and_then(|node| node.attrs().optional_string("code"))
+                    .and_then(|value| value.parse::<u16>().ok());
+                let device_removed = event
+                    .raw
+                    .as_ref()
+                    .and_then(|node| node.get_optional_child("conflict"))
+                    .and_then(|conflict| conflict.attrs().optional_string("type"))
+                    .is_some_and(|kind| kind == "device_removed");
+                tracing::error!(
+                    reason = ?event.reason,
+                    on_connect = event.on_connect,
+                    ?stream_code,
+                    device_removed,
+                    "WhatsApp logged this device out"
+                );
+            }
         })
         .on_message(move |ctx| {
             if let Some(message) = inbound(&ctx)
