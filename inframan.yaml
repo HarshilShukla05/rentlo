@@ -41,7 +41,7 @@ services:
     env:
       RENTLO_COMMAND: bot
       PUBLIC_URL: https://api-rentlo.prod-f498af8b.alpha.inframan.live
-      WA_SESSION: /data/whatsapp-next.db
+      WA_SESSION: /data/whatsapp-v9.db
       WA_RETIRE_FORMER_SESSIONS: "1"
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
       RUST_BACKTRACE: "1"
