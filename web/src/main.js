@@ -57,6 +57,8 @@ try {
     center: [placeholder.point.lat, placeholder.point.lng],
     zoom: 11.3, minZoom: 4, maxZoom: 16, zoomSnap: 0.25,
     zoomControl: false, scrollWheelZoom: false,
+    // Keep the page scrollable over the map on touch-first devices.
+    dragging: !matchMedia('(pointer: coarse)').matches,
   });
   map.attributionControl.setPrefix(false);
   let tilesLoaded = false;
@@ -74,6 +76,7 @@ try {
     if (!tilesLoaded) ui['map-error'].hidden = false;
   });
   tiles.addTo(map);
+  new ResizeObserver(() => map?.invalidateSize({ debounceMoveend: true })).observe(ui.map);
 } catch {
   map = undefined;
   ui['map-error'].hidden = false;

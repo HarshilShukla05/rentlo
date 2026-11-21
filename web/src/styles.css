@@ -146,11 +146,15 @@ button:disabled { cursor: wait; opacity: .6; }
   .intro h1 br { display: none; }
   .intro h1 br::after { content: " "; }
   .intro p { margin: 0; max-width: unset; }
+  .sidebar.member .intro h1 { font-size: clamp(29px, 8vw, 37px); margin: 2px 0; }
+  .sidebar.member .intro p { display: none; }
   .own-card { order: 1; margin-bottom: 0; }
   .location-controls { order: 2; }
   .segment { order: 3; margin-block: -4px 1px; }
-  .segment button { min-height: 39px; }
+  .segment button, .own-card button, .match-actions .button { min-height: 44px; }
   .map-frame { order: 4; position: relative; top: auto; height: clamp(360px, 58svh, 530px); border-radius: 16px; }
+  .layout:has(.sidebar.member) { row-gap: 10px; }
+  .layout:has(.sidebar.member) .map-frame { height: clamp(240px, 38svh, 315px); }
   .sidebar.member .matches-panel { order: 5; }
   .area-panel, .sidebar.member .area-panel { order: 6; }
   .notice, .sidebar.member .notice { order: 7; }
@@ -158,7 +162,8 @@ button:disabled { cursor: wait; opacity: .6; }
   .map-title, .focus-map { top: 11px; }
   .map-title, .legend { left: 11px; }
   .map-controls, .focus-map { right: 11px; }
-  .map-controls { bottom: 61px; }
+  .map-controls { bottom: 48px; }
+  .map-controls button { width: 44px; height: 44px; }
   .legend { bottom: 24px; font-size: 9px; padding: 8px; gap: 7px; }
 }
 @media (prefers-reduced-motion: reduce) {
