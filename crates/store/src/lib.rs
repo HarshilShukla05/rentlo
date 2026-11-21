@@ -70,6 +70,10 @@ impl PgStore {
         sqlx::query("SELECT 1").execute(&self.pool).await.map(|_| ())
     }
 
+    pub async fn active_profile_count(&self) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar("SELECT count(*) FROM profiles WHERE status = 'active'").fetch_one(&self.pool).await
+    }
+
     /// Deletes rows nobody needs any more: used links, ended sessions, old
     /// inbound ids, sent messages. Returns how many rows went.
     pub async fn prune(&self, now: DateTime<Utc>) -> Result<u64, sqlx::Error> {

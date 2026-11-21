@@ -24,7 +24,10 @@
 
       <section id="profile" class="own-card" aria-label="Your profile" hidden></section>
 
-      <div class="location-controls">
+      <button id="explore" class="button button-outline explore-toggle" type="button"
+        aria-expanded="false" aria-controls="city-controls filters area-panel" hidden>Explore areas</button>
+
+      <div id="city-controls" class="location-controls">
         <label class="field-label" for="city">City</label>
         <div class="select-wrap"><span class="place-icon" aria-hidden="true"></span><select id="city"><option>Hyderabad</option></select><span class="select-chevron" aria-hidden="true">⌄</span></div>
       </div>
@@ -59,7 +62,7 @@
         <button data-zoom="-1" aria-label="Zoom out">−</button>
         <button id="reset-map" aria-label="Reset city view">⌖</button>
       </div>
-      <div class="legend" aria-label="Map legend">
+      <div id="map-legend" class="legend" aria-label="Map legend">
         <span><i class="dot room"></i>Has a room</span><span><i class="dot seeker"></i>Needs a room</span><span><i class="dot team"></i>Team up</span>
       </div>
     </section>

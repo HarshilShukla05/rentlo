@@ -21,6 +21,8 @@
 The public base map contains the city and neighbourhood catalogue. The
 activity API requires a verified member session and returns bucketed
 counts by neighbourhood and intent when at least three members qualify.
+The private map draws this activity at neighbourhood centres. City switching,
+intent filters, and the neighbourhood list are available under **Explore areas**.
 There are no individual public pins or cards. The browser checks for
 updates every 30 seconds while the member’s tab is visible. The member’s
 own area and matches stay private.

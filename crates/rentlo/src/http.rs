@@ -44,6 +44,11 @@ pub async fn serve(
         .as_deref()
         .filter(|phone| (8..=15).contains(&phone.len()) && phone.bytes().all(|b| b.is_ascii_digit()))
         .map(|phone| format!("https://wa.me/{phone}"));
+    if let Ok(Ok(active_profiles)) =
+        tokio::time::timeout(std::time::Duration::from_secs(2), store.active_profile_count()).await
+    {
+        tracing::info!(active_profiles, "Rentlo matching profile count");
+    }
     let app = App {
         web: Arc::new(Web::new(Arc::new(store.clone()), settings.clone())),
         store,

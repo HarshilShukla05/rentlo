@@ -5,6 +5,7 @@ import './styles.css';
 const ui = Object.fromEntries([
   'whatsapp', 'leave', 'city', 'profile', 'filters', 'areas', 'clear-area', 'matches', 'matches-panel',
   'map', 'map-label', 'map-caption', 'map-error', 'my-area', 'reset-map', 'intro-copy', 'notice', 'connection',
+  'explore', 'city-controls', 'area-panel', 'map-legend',
 ].map(id => [id, document.getElementById(id)]));
 
 const intents = {
@@ -15,7 +16,8 @@ const intents = {
 const placeholder = { name: 'Hyderabad', point: { lat: 17.418, lng: 78.375 } };
 const state = {
   city: 'Hyderabad', cities: [placeholder], areas: [], activity: [], matches: [], me: null,
-  filter: 'all', selected: null, whatsapp: null, busy: false, cityRequest: 0, refreshRequest: 0,
+  filter: 'all', selected: null, viewingOwnArea: false, whatsapp: null, busy: false, cityRequest: 0, refreshRequest: 0,
+  exploring: false,
 };
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -50,6 +52,7 @@ function api(path, method = 'GET', body) {
 }
 
 let map;
+let activityLayer;
 let areaMarkers = [];
 let ownMarker;
 try {
@@ -76,6 +79,7 @@ try {
     if (!tilesLoaded) ui['map-error'].hidden = false;
   });
   tiles.addTo(map);
+  activityLayer = L.layerGroup().addTo(map);
   new ResizeObserver(() => map?.invalidateSize({ debounceMoveend: true })).observe(ui.map);
 } catch {
   map = undefined;
@@ -95,10 +99,10 @@ function placeOf(name) {
   return state.cities.find(place => place.name === name);
 }
 
-function moveMap(position, zoom) {
+function moveMap(position, zoom, animate = true) {
   if (!map || !position) return;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  map.setView([position.lat, position.lng], zoom, { animate: !reduced });
+  map.setView([position.lat, position.lng], zoom, { animate: animate && !reduced });
 }
 
 function focusCity() {
@@ -113,17 +117,26 @@ function focusCity() {
 
 function selectedArea(name) {
   state.selected = name;
+  state.viewingOwnArea = false;
   renderAreas();
   renderMatches();
   const area = state.areas.find(area => area.name === name);
-  if (area) moveMap(area.point, 13);
+  if (area) moveMap(area.point, 14);
   else focusCity();
 }
 
-function focusMine() {
+function focusMine(animate = true) {
   if (!state.me?.location) return;
   const city = state.me.card.city;
-  const focus = () => moveMap(state.me.location.point, state.me.location.precision === 'city' ? 11.3 : 13);
+  const focus = () => {
+    if (state.city !== city || state.me?.card?.city !== city || !state.me.location) return;
+    state.viewingOwnArea = true;
+    state.selected = null;
+    renderAreas();
+    renderMatches();
+    const { point, precision } = state.me.location;
+    moveMap(point, precision === 'city' ? 11.3 : 14, animate);
+  };
   if (state.city !== city) {
     loadCity(city, false).then(focus).catch(error => showNotice(error.message));
   } else {
@@ -131,18 +144,34 @@ function focusMine() {
   }
 }
 
-ui['my-area'].addEventListener('click', focusMine);
+ui['my-area'].addEventListener('click', () => focusMine());
 ui['reset-map'].addEventListener('click', () => selectedArea(null));
 ui['clear-area'].addEventListener('click', () => selectedArea(null));
 ui.city.addEventListener('change', event => loadCity(event.target.value).catch(error => showNotice(error.message)));
+ui.explore.addEventListener('click', () => {
+  state.exploring = !state.exploring;
+  renderExplorer();
+  if (state.exploring) {
+    renderAreas();
+  } else {
+    setFilter('all');
+    if (state.me?.location) focusMine();
+    else selectedArea(null);
+  }
+});
 ui.filters.addEventListener('click', event => {
   const control = event.target.closest('[data-filter]');
-  if (!control) return;
-  state.filter = control.dataset.filter;
-  for (const sibling of ui.filters.querySelectorAll('button')) sibling.setAttribute('aria-pressed', String(sibling === control));
+  if (control) setFilter(control.dataset.filter);
+});
+
+function setFilter(filter) {
+  state.filter = filter;
+  for (const control of ui.filters.querySelectorAll('button')) {
+    control.setAttribute('aria-pressed', String(control.dataset.filter === filter));
+  }
   renderAreas();
   renderMatches();
-});
+}
 
 function shownActivity(name) {
   return state.activity.filter(item => item.area === name && (state.filter === 'all' || item.intent === state.filter));
@@ -153,6 +182,9 @@ function renderAreas() {
   const areaList = [...state.areas].sort((a, b) =>
     Number(shownActivity(b.name).length > 0) - Number(shownActivity(a.name).length > 0));
   const rows = [];
+  if (state.me?.card && !areaList.some(area => shownActivity(area.name).length)) {
+    rows.push(element('p', 'Heatmap shading appears when three or more profiles share an intent in a neighbourhood.', 'soft-note'));
+  }
   const citywide = shownActivity(null);
   if (citywide.length) {
     rows.push(element('p', `Citywide · ${activityLine(citywide)}`, 'soft-note'));
@@ -171,8 +203,13 @@ function renderAreas() {
   }
   if (!areaList.length) rows.push(element('p', 'Use the map to explore this city.', 'soft-note'));
   ui.areas.replaceChildren(...rows);
-  ui['map-label'].textContent = state.selected ?? state.city;
-  ui['map-caption'].textContent = state.selected ? state.city : 'Neighbourhood view';
+  const ownLocation = state.viewingOwnArea && state.me?.card?.city === state.city ? state.me.location : null;
+  const ownNeighbourhood = ownLocation && ownLocation.precision !== 'city'
+    ? state.me.card.area || 'Your area' : null;
+  ui['map-label'].textContent = state.selected ?? ownNeighbourhood ?? state.city;
+  let caption = state.selected ? state.city : 'Neighbourhood view';
+  if (ownLocation) caption = ownNeighbourhood ? 'Your approximate area' : 'Your city';
+  ui['map-caption'].textContent = caption;
   ui['clear-area'].hidden = !state.selected;
   renderMarkers(areaList);
 }
@@ -184,9 +221,23 @@ function mapMarker(point, label, own = false) {
 
 function renderMarkers(areas) {
   if (!map) return;
+  activityLayer.clearLayers();
   for (const marker of areaMarkers) marker.remove();
-  areaMarkers = areas.map(area => {
+  areaMarkers = [];
+  const quietView = Boolean(state.me?.card) && !state.exploring;
+  for (const area of areas) {
     const activity = shownActivity(area.name);
+    const strength = Math.max(0, ...activity.map(group => group.at_least));
+    if (strength) {
+      // Draw from public neighbourhood centres and the server's privacy buckets.
+      const radius = 500 + 20 * strength;
+      const centre = [area.point.lat, area.point.lng];
+      const style = { fillColor: '#e96e49', stroke: false, interactive: false };
+      L.circle(centre, { ...style, radius, fillOpacity: 0.14 }).addTo(activityLayer);
+      L.circle(centre, { ...style, radius: radius * 0.62, fillOpacity: 0.19 }).addTo(activityLayer);
+    }
+    if (quietView && state.viewingOwnArea && area.name === state.me.card.area) continue;
+    if (quietView && !activity.length && area.name !== state.selected) continue;
     const label = button(area.name, `area-marker${activity.length ? ' has-activity' : ''}`, () => {
       selectedArea(area.name);
       areaMarkers.find(marker => marker.getElement().textContent === area.name)?.getElement().querySelector('button').focus({ preventScroll: true });
@@ -194,8 +245,8 @@ function renderMarkers(areas) {
     label.dataset.intent = activity.length === 1 ? activity[0].intent : state.filter;
     label.setAttribute('aria-pressed', String(area.name === state.selected));
     if (activity.length) label.setAttribute('aria-label', `${area.name}, ${activityLine(activity)}`);
-    return mapMarker(area.point, label);
-  });
+    areaMarkers.push(mapMarker(area.point, label));
+  }
   ownMarker?.remove();
   if (state.me?.location && state.me.card?.city === state.city) {
     const { point, precision } = state.me.location;
@@ -212,6 +263,7 @@ function renderProfile() {
   ui['my-area'].hidden = !state.me?.location || !map;
   ui.whatsapp.hidden = !state.whatsapp || member;
   ui.leave.hidden = !member;
+  renderExplorer();
   ui.connection.textContent = member ? 'Verified through WhatsApp' : 'Neighbourhood map';
   ui['intro-copy'].textContent = member
     ? 'Your approximate area and the people who fit how you live.'
@@ -220,7 +272,7 @@ function renderProfile() {
   const name = [card.area, card.city].filter(Boolean).join(', ');
   const locationNote = !state.me.location || state.me.location.precision === 'city'
     ? 'Send a neighbourhood name or area pin in WhatsApp to refine the map.'
-    : 'Approximate area';
+    : intents[card.intent].label;
   ui.profile.replaceChildren(
     element('span', state.me.paused ? 'Matching paused' : 'Live for matching', 'profile-status'),
     button(state.me.paused ? 'Go live' : 'Pause', 'button button-outline', () => action(async () => {
@@ -230,6 +282,17 @@ function renderProfile() {
     element('div'),
   );
   ui.profile.lastElementChild.append(element('h2', name), element('p', locationNote));
+}
+
+function renderExplorer() {
+  const member = Boolean(state.me?.card);
+  const showBrowsing = !member || state.exploring;
+  ui.explore.hidden = !member;
+  ui.explore.textContent = state.exploring ? 'Done exploring' : 'Explore areas';
+  ui.explore.setAttribute('aria-expanded', String(state.exploring));
+  for (const id of ['city-controls', 'filters', 'area-panel', 'map-legend']) {
+    ui[id].hidden = !showBrowsing;
+  }
 }
 
 function whatsappLink(url, text) {
@@ -313,6 +376,7 @@ async function loadCity(city, move = true) {
   state.activity = state.me?.card ? activity : [];
   state.whatsapp = data.whatsapp;
   state.selected = null;
+  state.viewingOwnArea = false;
   const names = [...new Set([city, ...data.cities.map(place => place.name)])].sort();
   ui.city.replaceChildren(...names.map(name => element('option', name)));
   ui.city.value = city;
@@ -335,6 +399,8 @@ async function refresh() {
     state.me = null;
     state.matches = [];
     state.activity = [];
+    state.viewingOwnArea = false;
+    state.exploring = false;
     if (wasMember) showNotice('Your private map session ended. Send link in WhatsApp to open it again.');
   } else {
     const city = state.city;
@@ -381,15 +447,18 @@ async function start() {
   }
   try {
     const me = await api('/me');
-    if (me.card) {
-      state.me = me;
-      state.matches = await api('/me/matches');
-    }
+    if (me.card) state.me = me;
   } catch (error) {
     if (error.status !== 401) showNotice(error.message);
   }
-  await loadCity(state.me?.card?.city ?? state.city, !state.me?.location);
-  if (state.me?.location) focusMine();
+  const places = loadCity(state.me?.card?.city ?? state.city, !state.me?.location).then(() => {
+    if (state.me?.location) focusMine(false);
+  });
+  const matches = state.me?.card ? api('/me/matches').then(items => {
+    state.matches = items;
+    renderMatches();
+  }).catch(error => showNotice(error.message)) : null;
+  await Promise.all([places, matches]);
   setInterval(() => {
     if (!document.hidden && state.me?.card && !state.busy) refresh().catch(error => showNotice(error.message));
   }, 30_000);
