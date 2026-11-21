@@ -38,7 +38,7 @@ match signals, and participation controls.
 ## Release
 
 The Docker image includes the frontend and serves it from the `api`
-service. Inframan requires an active HTTPS domain before attaching it in
-`inframan.yaml`. Keep the browser origin and both services’ `PUBLIC_URL`
-identical. The existing pairing-number secret can be populated with the
+service. Inframan assigns the service an HTTPS address with
+`auto_domain: true`. The bot’s private links use that address. Keep the
+browser origin and both services’ `PUBLIC_URL` identical. The existing pairing-number secret can be populated with the
 replacement production account when it is time to connect WhatsApp.

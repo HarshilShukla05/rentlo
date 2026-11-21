@@ -40,7 +40,7 @@ services:
         - rust-toolchain.toml
     env:
       RENTLO_COMMAND: bot
-      PUBLIC_URL: https://rentlo.inframan.live
+      PUBLIC_URL: https://api-rentlo.prod-f498af8b.alpha.inframan.live
       WA_SESSION: /data/whatsapp-next.db
       WA_RETIRE_FORMER_SESSIONS: "1"
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
@@ -50,8 +50,8 @@ services:
     connections:
       DATABASE_URL: postgres/rentlo-db
   api:
-    # Attach the HTTPS domain after Inframan confirms it is active.
     type: web
+    auto_domain: true
     port: 8080
     node_pool: application-pool
     scaling:
@@ -74,7 +74,7 @@ services:
         - rust-toolchain.toml
     env:
       RENTLO_COMMAND: api
-      PUBLIC_URL: https://rentlo.inframan.live
+      PUBLIC_URL: https://api-rentlo.prod-f498af8b.alpha.inframan.live
     secrets:
       # The replacement bot number is used to open its public WhatsApp chat.
       WA_PAIRING_NUMBER: rentlo-wa-pairing-number
