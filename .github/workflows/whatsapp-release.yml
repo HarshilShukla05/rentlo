@@ -1,0 +1,125 @@
+name: WhatsApp release check
+
+on:
+  push:
+    tags: ["rentlo-test-*", "rentlo-release-*"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Deploy the tested commit to Inframan
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rentlo-whatsapp-release
+  cancel-in-progress: false
+
+jobs:
+  whatsapp:
+    if: >-
+      github.ref == 'refs/heads/rentlo-release-candidate' ||
+      startsWith(github.ref, 'refs/tags/rentlo-test-') ||
+      startsWith(github.ref, 'refs/tags/rentlo-release-')
+    runs-on: [self-hosted, linux, rentlo-whatsapp-qa]
+    environment: rentlo-whatsapp-qa
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: qa
+        ports: [5432/tcp]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify the release candidate ref
+        run: |
+          git fetch origin refs/heads/rentlo-release-candidate
+          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.0"
+          components: rustfmt, clippy
+      - name: Verify the candidate
+        env:
+          RENTLO_TEST_DATABASE_URL: postgres://postgres:qa@127.0.0.1:${{ job.services.postgres.ports[5432] }}/postgres
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+          cargo build --locked -p rentlo
+          cargo build --locked -p wa --example live_flow
+      - name: Run the WhatsApp conversation on the candidate
+        env:
+          DATABASE_URL: postgres://postgres:qa@127.0.0.1:${{ job.services.postgres.ports[5432] }}/postgres
+          WA_SESSION: ${{ vars.RENTLO_QA_BOT_SESSION }}
+          RENTLO_QA_TESTER_SESSION: ${{ vars.RENTLO_QA_TESTER_SESSION }}
+          RENTLO_QA_BOT_PHONE: ${{ secrets.RENTLO_QA_BOT_PHONE }}
+          RENTLO_QA_TESTER_PHONE: ${{ secrets.RENTLO_QA_TESTER_PHONE }}
+          PUBLIC_URL: https://rentlo.test
+          RUST_LOG: rentlo=info,wa=info,sqlx=error,whatsapp_rust=error
+        run: |
+          set -euo pipefail
+          printf '### Live WhatsApp conversation\n\nCandidate `%s`\n\n```text\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          log=$(mktemp)
+          cleanup() {
+            if [[ -n ${bot_pid:-} ]]; then
+              kill "$bot_pid" 2>/dev/null || true
+              wait "$bot_pid" || true
+            fi
+            rm -f "$log"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          }
+          trap cleanup EXIT
+          fail() {
+            printf 'FAIL | %s\n' "$1" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          [[ -n "$RENTLO_QA_BOT_PHONE" && -n "$RENTLO_QA_TESTER_PHONE" ]] || fail "Configure both dedicated QA numbers"
+          [[ -f "$WA_SESSION" && -f "$RENTLO_QA_TESTER_SESSION" ]] || fail "Pair both dedicated QA accounts"
+          [[ ! "$WA_SESSION" -ef "$RENTLO_QA_TESTER_SESSION" ]] || fail "Use two distinct QA sessions"
+          target/debug/examples/live_flow check-sessions 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          unset WA_PAIRING_NUMBER BOT_PHONE WA_RETIRE_FORMER_SESSIONS
+          target/debug/rentlo bot > "$log" 2>&1 &
+          bot_pid=$!
+          for attempt in {1..60}; do
+            if grep -Fq '"message":"WhatsApp connected"' "$log"; then
+              break
+            fi
+            kill -0 "$bot_pid" 2>/dev/null || fail "Candidate stopped before connecting to WhatsApp"
+            sleep 1
+          done
+          grep -Fq '"message":"WhatsApp connected"' "$log" || fail "Candidate did not connect to WhatsApp"
+          printf 'PASS | Candidate connected with the dedicated QA bot\n' | tee -a "$GITHUB_STEP_SUMMARY"
+          target/debug/examples/live_flow 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  release:
+    if: >-
+      needs.whatsapp.result == 'success' &&
+      (inputs.release || startsWith(github.ref, 'refs/tags/rentlo-release-'))
+    needs: whatsapp
+    runs-on: ubuntu-24.04
+    environment: rentlo-production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RENTLO_RELEASE_TOKEN }}
+      - name: Promote the tested commit
+        env:
+          DEPLOY_BRANCH: claude/gallant-darwin-gxloil
+        run: |
+          git fetch origin "refs/heads/$DEPLOY_BRANCH"
+          git merge-base --is-ancestor FETCH_HEAD "$GITHUB_SHA"
+          git push origin "$GITHUB_SHA:refs/heads/$DEPLOY_BRANCH"
+          printf 'Promoted tested commit `%s` to the Inframan deployment branch.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

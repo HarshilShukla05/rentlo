@@ -2541,9 +2541,11 @@ dependencies = [
  "app",
  "async-trait",
  "chrono",
+ "percent-encoding",
  "tokio",
  "tracing",
  "ureq",
+ "url",
  "whatsapp-rust",
 ]
 

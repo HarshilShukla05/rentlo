@@ -3,7 +3,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, claude/gallant-darwin-gxloil]
 
 permissions:
   contents: read
@@ -36,6 +36,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - name: Run synthetic conversation and unit tests
+        shell: bash
+        run: cargo test --workspace --locked | tee "$RUNNER_TEMP/rentlo-rust-tests.log"
         env:
           RENTLO_TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
+      - name: Summarize test evidence
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/rentlo-rust-tests.log"
+          if [[ -f "$log" ]]; then
+            printf '### Synthetic conversation test evidence\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+            grep -E 'shared_locations|reads_wrapped_current|maps::tests|two_people_meet|delete_erases_everything|test result:' "$log" >> "$GITHUB_STEP_SUMMARY" || true
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi

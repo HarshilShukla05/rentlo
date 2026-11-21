@@ -361,3 +361,36 @@ async fn unprompted_alerts_stop_at_the_daily_cap() {
     let alerts = world.inbox(&ASHA).await;
     assert_eq!(alerts.matches("New match for you").count(), app::policy::ALERTS_PER_DAY as usize, "{alerts}");
 }
+
+#[tokio::test]
+async fn shared_locations_update_the_area_without_tracking_live_movement() {
+    let Some(world) = World::new().await else { return };
+    onboard_asha(&world).await;
+    let filter = app::web::PinFilter::default();
+
+    world.deliver(&ASHA, Body::LiveLocation { lat: 12.935_27, lng: 77.624_51 }).await;
+    assert!(world.inbox(&ASHA).await.contains("saved one point"));
+    let pins = world.web.pins(None, &filter).await.unwrap();
+    assert_eq!(pins.len(), 1);
+
+    world.deliver(&ASHA, Body::LiveLocation { lat: 13.01, lng: 77.62 }).await;
+    assert_eq!(world.inbox(&ASHA).await, "");
+    let unchanged = world.web.pins(None, &filter).await.unwrap();
+    assert_eq!((pins[0].lat, pins[0].lng), (unchanged[0].lat, unchanged[0].lng));
+
+    world.deliver(&ASHA, Body::UnresolvedMapLink).await;
+    assert!(world.inbox(&ASHA).await.contains("couldn't get a location"));
+    assert_eq!(world.web.pins(None, &filter).await.unwrap().len(), 1);
+
+    world.deliver(&ASHA, Body::Area("Test District".into())).await;
+    assert!(world.inbox(&ASHA).await.contains("Saved your preferred area as *Test District*"));
+    assert!(world.web.pins(None, &filter).await.unwrap().is_empty());
+
+    world.deliver(&ASHA, Body::LiveLocation { lat: 13.01, lng: 77.62 }).await;
+    assert_eq!(world.inbox(&ASHA).await, "");
+    assert!(world.web.pins(None, &filter).await.unwrap().is_empty());
+
+    world.deliver(&ASHA, Body::Location { lat: 12.97, lng: 77.59 }).await;
+    assert!(world.inbox(&ASHA).await.contains("Updated"));
+    assert_eq!(world.web.pins(None, &filter).await.unwrap().len(), 1);
+}

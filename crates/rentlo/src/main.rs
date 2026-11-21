@@ -105,6 +105,9 @@ async fn connect(env: &Env, connections: u32) -> Result<PgStore, String> {
 }
 
 async fn bot(env: Env) -> Result<(), String> {
+    if std::env::var("WA_RETIRE_FORMER_SESSIONS").as_deref() == Ok("1") {
+        retirement::retire_sessions(std::path::Path::new(&env.session_path))?;
+    }
     let store = connect(&env, 5).await?;
     let shared: Arc<dyn Store> = Arc::new(store.clone());
     let link = wa::Link::default();
@@ -130,7 +133,12 @@ async fn bot(env: Env) -> Result<(), String> {
 /// must not be handled concurrently, and at this volume one at a time is
 /// simpler than per-person ordering.
 async fn handle_all(bot: Arc<Bot>, mut inbox: mpsc::Receiver<Inbound>) {
-    while let Some(message) = inbox.recv().await {
+    while let Some(mut message) = inbox.recv().await {
+        if let app::Body::Text(text) = &message.body
+            && let Some(location) = wa::resolve_location(text).await
+        {
+            message.body = location;
+        }
         let id = message.message_id.clone();
         for attempt in 1..=HANDLE_ATTEMPTS {
             match bot.handle(message.clone()).await {
