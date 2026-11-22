@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
-const RETIRED_SESSIONS: [&str; 2] = ["whatsapp.db", "whatsapp-relink.db"];
+const RETIRED_SESSIONS: [&str; 4] = ["whatsapp.db", "whatsapp-relink.db", "whatsapp-next.db", "whatsapp-v9.db"];
 const SIDECARS: [&str; 4] = ["", "-journal", "-shm", "-wal"];
 
 /// Retire only known former pairing stores on the worker's data volume.
@@ -45,7 +45,10 @@ mod tests {
         let unrelated = root.join("other.db");
         let retired = root.join("whatsapp-relink.db");
         let journal = root.join("whatsapp.db-wal");
-        for path in [&active, &unrelated, &retired, &journal] {
+        let previous = root.join("whatsapp-next.db-shm");
+        let latest = root.join("whatsapp-v9.db");
+        let latest_wal = root.join("whatsapp-v9.db-wal");
+        for path in [&active, &unrelated, &retired, &journal, &previous, &latest, &latest_wal] {
             std::fs::write(path, []).unwrap();
         }
         assert!(remove_retired(&root, &retired).is_err());
@@ -53,6 +56,7 @@ mod tests {
         remove_retired(&root, &active).unwrap();
         remove_retired(&root, &active).unwrap();
         assert!(!retired.exists() && !journal.exists());
+        assert!(!previous.exists() && !latest.exists() && !latest_wal.exists());
         assert!(active.exists() && unrelated.exists());
         std::fs::remove_dir_all(root).unwrap();
     }
