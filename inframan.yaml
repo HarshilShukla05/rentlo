@@ -39,14 +39,11 @@ services:
         - Cargo.lock
         - rust-toolchain.toml
     env:
-      RENTLO_COMMAND: bot
+      RENTLO_COMMAND: retire-whatsapp
       PUBLIC_URL: https://api-rentlo.prod-f498af8b.alpha.inframan.live
-      WA_SESSION: /data/whatsapp-v9.db
-      WA_RETIRE_FORMER_SESSIONS: "1"
+      WA_SESSION: /data/whatsapp-unconfigured.db
       RUST_LOG: info,sqlx=warn,whatsapp_rust=warn
       RUST_BACKTRACE: "1"
-    secrets:
-      WA_PAIRING_NUMBER: rentlo-wa-pairing-number
     connections:
       DATABASE_URL: postgres/rentlo-db
   api:
@@ -75,8 +72,5 @@ services:
     env:
       RENTLO_COMMAND: api
       PUBLIC_URL: https://api-rentlo.prod-f498af8b.alpha.inframan.live
-    secrets:
-      # The replacement bot number is used to open its public WhatsApp chat.
-      WA_PAIRING_NUMBER: rentlo-wa-pairing-number
     connections:
       DATABASE_URL: postgres/rentlo-db
